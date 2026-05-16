@@ -1,0 +1,9 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "/usr/bin/supervisord -c /etc/supervisord.conf"
+healthcheckPath = "/api.php?action=status"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
