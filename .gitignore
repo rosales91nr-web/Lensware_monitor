@@ -1,8 +1,15 @@
 # Datos generados en runtime (Railway los maneja en el contenedor)
-/cache/
-/backups/
-/logs/
-/uploads/
+/cache/*
+!/cache/.gitkeep
+
+/backups/*
+!/backups/.gitkeep
+
+/logs/*
+!/logs/.gitkeep
+
+/uploads/*
+!/uploads/.gitkeep
 
 # Archivos locales de debug
 debug.php
