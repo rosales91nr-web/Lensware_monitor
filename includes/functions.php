@@ -32,16 +32,11 @@ function processCSV(string $filepath): ?array {
         return null;
     }
 
-    // Debug: log primeros 500 caracteres
-    logMessage("Primeros 500 caracteres del archivo: " . substr($raw, 0, 500));
-
     // Remover BOM
     $raw = ltrim($raw, "\xEF\xBB\xBF");
     
     // Detectar encoding
     $encoding = mb_detect_encoding($raw, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
-    logMessage("Encoding detectado: " . ($encoding ?: 'desconocido'));
-    
     if ($encoding && $encoding !== 'UTF-8') {
         $raw = mb_convert_encoding($raw, 'UTF-8', $encoding);
     }
@@ -53,13 +48,37 @@ function processCSV(string $filepath): ?array {
         return null;
     }
 
-    // Obtener cabecera
-    $delimiter = "\t";
+    // DETECTAR DELIMITADOR AUTOMÁTICAMENTE
+    $firstLine = $lines[0];
+    $delimiters = ["\t", ";", ",", "|"];
+    $delimiter = null;
+    $maxCount = 0;
+    
+    foreach ($delimiters as $d) {
+        $count = substr_count($firstLine, $d);
+        if ($count > $maxCount) {
+            $maxCount = $count;
+            $delimiter = $d;
+        }
+    }
+    
+    if (!$delimiter) {
+        logMessage("No se pudo detectar el delimitador", 'error');
+        return null;
+    }
+    
+    logMessage("Delimitador detectado: '" . ($delimiter === "\t" ? "TAB" : $delimiter) . "'");
+
+    // Procesar cabecera
     $header = array_map('trim', str_getcsv($lines[0], $delimiter));
+    // Eliminar posible columna vacía al final
+    if (end($header) === '') {
+        array_pop($header);
+    }
     
     logMessage("Cabecera encontrada (" . count($header) . " columnas): " . json_encode($header));
     
-    // Verificar columnas requeridas
+    // Verificar columnas mínimas requeridas
     $requiredCols = ['Job', 'Status', 'Date', 'Time'];
     $missingCols = [];
     foreach ($requiredCols as $col) {
@@ -77,7 +96,7 @@ function processCSV(string $filepath): ?array {
     $records = [];
 
     for ($i = 1; $i < count($lines); $i++) {
-        $line = trim($lines[$i]);
+        $line = rtrim($lines[$i], "\r\n;"); // Limpiar caracteres al final
         if ($line === '') continue;
 
         $cols = str_getcsv($line, $delimiter);
@@ -98,23 +117,13 @@ function processCSV(string $filepath): ?array {
         $job = trim($row['Job'] ?? '');
         if ($job === '') continue;
 
-        // Procesar fecha y hora
-        $dateRaw = trim($row['Date'] ?? '');
-        $timeRaw = trim($row['Time'] ?? '');
-        
-        // Validar formato de hora (HH:MM:SS o HH:MM)
-        if (!empty($timeRaw) && !preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $timeRaw)) {
-            logMessage("Formato de hora inválido en fila $i: $timeRaw", 'warning');
-            $timeRaw = '00:00:00';
-        }
-
         $records[] = [
             'job'          => $job,
             'status'       => trim($row['Status'] ?? ''),
             'status_label' => $STATUS_LABELS[trim($row['Status'] ?? '')] ?? trim($row['Status'] ?? ''),
             'is_breakage'  => (trim($row['Status'] ?? '') === 'BREA'),
-            'date_raw'     => $dateRaw,
-            'time_raw'     => $timeRaw,
+            'date_raw'     => trim($row['Date'] ?? ''),
+            'time_raw'     => trim($row['Time'] ?? ''),
             'user'         => trim($row['User'] ?? ''),
             'device'       => trim($row['Device'] ?? ''),
             'side'         => trim($row['R/L'] ?? ''),
@@ -131,7 +140,7 @@ function processCSV(string $filepath): ?array {
             'type'         => trim($row['Type'] ?? ''),
             'dm'           => trim($row['DM'] ?? ''),
             'bcrv'         => trim($row['Bcrv'] ?? ''),
-            'index_val'    => ($indexRaw = trim($row['Index'] ?? '')) !== '' ? (float)$indexRaw : null,
+            'index_val'    => ($indexRaw = trim($row['Index'] ?? '')) !== '' ? (float) str_replace(',', '.', $indexRaw) : null,
         ];
     }
 
