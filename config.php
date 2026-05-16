@@ -15,6 +15,7 @@ define('CACHE_FILE', __DIR__ . '/cache/data.json');
 define('CACHE_TTL',  (int)(getenv('CACHE_TTL') ?: 60)); // segundos
 
 // Clave de API para el endpoint de subida de CSV (define en Railway → Variables)
+// Si no defines UPLOAD_SECRET en Railway Variables, el upload no requiere auth (uso interno).
 define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: 'changeme');
 
 // Mapeo de estados

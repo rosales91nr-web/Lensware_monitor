@@ -108,11 +108,16 @@ try {
                 break;
             }
 
-            $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
-            if ($secret !== UPLOAD_SECRET) {
-                http_response_code(403);
-                echo json_encode(['success' => false, 'error' => 'No autorizado']);
-                break;
+            // Si UPLOAD_SECRET es 'changeme' o vacío, no se requiere auth (uso interno).
+            // Para producción pública, define UPLOAD_SECRET en Railway Variables.
+            $requireAuth = (UPLOAD_SECRET !== 'changeme' && UPLOAD_SECRET !== '');
+            if ($requireAuth) {
+                $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
+                if ($secret !== UPLOAD_SECRET) {
+                    http_response_code(403);
+                    echo json_encode(['success' => false, 'error' => 'No autorizado']);
+                    break;
+                }
             }
 
             if (empty($_FILES['csv_file'])) {

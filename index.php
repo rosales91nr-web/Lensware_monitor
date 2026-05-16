@@ -885,13 +885,14 @@ canvas {
 
             // Leer UPLOAD_SECRET desde meta tag o usar vacío (Railway lo valida)
             const secret = document.querySelector('meta[name="upload-secret"]')?.content || '';
-            if (secret) formData.append('secret', secret);
+            if (secret && secret !== 'changeme') formData.append('secret', secret);
 
             try {
                 progBar.style.width = '60%';
+                const headers = (secret && secret !== 'changeme') ? { 'X-Upload-Secret': secret } : {};
                 const response = await fetch('api.php?action=upload_csv', {
                     method: 'POST',
-                    headers: secret ? { 'X-Upload-Secret': secret } : {},
+                    headers: headers,
                     body: formData
                 });
 
