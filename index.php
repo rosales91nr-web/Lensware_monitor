@@ -514,6 +514,112 @@ canvas {
     0% { background-position: 0% 0%; }
     100% { background-position: 200% 0%; }
 }
+
+/* ========== UPLOAD TAB ========== */
+.upload-container {
+    max-width: 680px;
+    margin: 0 auto;
+}
+.upload-zone {
+    border: 2px dashed #cbd5e1;
+    border-radius: 20px;
+    padding: 60px 40px;
+    text-align: center;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 24px;
+}
+.upload-zone:hover, .upload-zone.dragover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+}
+.upload-zone i { font-size: 52px; color: #cbd5e1; margin-bottom: 16px; display: block; transition: color 0.2s; }
+.upload-zone:hover i, .upload-zone.dragover i { color: #3b82f6; }
+.upload-zone h3 { font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+.upload-zone p { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+.upload-zone .btn-primary { display: inline-flex; align-items: center; gap: 8px; }
+.upload-zone input[type=file] { display: none; }
+.upload-filename {
+    display: none;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: 13px;
+    color: #166534;
+    margin-bottom: 16px;
+    align-items: center;
+    gap: 10px;
+}
+.upload-filename.visible { display: flex; }
+.btn-upload-send {
+    width: 100%;
+    padding: 14px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 14px;
+    color: white;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+}
+.btn-upload-send:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
+.btn-upload-send:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.upload-progress {
+    display: none;
+    background: #f1f5f9;
+    border-radius: 10px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+.upload-progress.visible { display: block; }
+.upload-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    border-radius: 10px;
+    width: 0%;
+    transition: width 0.3s;
+    animation: shimmer 1.5s infinite;
+}
+.upload-result {
+    display: none;
+    padding: 16px 20px;
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 600;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.upload-result.visible { display: flex; }
+.upload-result.success { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.upload-result.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+.upload-info-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 20px;
+    font-size: 13px;
+    color: #475569;
+    line-height: 1.8;
+}
+.upload-info-box h4 { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+.upload-info-box code {
+    background: #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #1e293b;
+}
     </style>
 </head>
 <body>
@@ -532,6 +638,7 @@ canvas {
                 <a href="#" class="nav-item" data-tab="devices"><i class="fas fa-microchip"></i><span>Dispositivos</span></a>
                 <a href="#" class="nav-item" data-tab="operators"><i class="fas fa-users"></i><span>Operadores</span></a>
                 <a href="#" class="nav-item" data-tab="search"><i class="fas fa-search"></i><span>Buscar</span></a>
+                <a href="#" class="nav-item" data-tab="upload"><i class="fas fa-upload"></i><span>Importar CSV</span></a>
             </nav>
             <div class="sidebar-footer">
                 <div class="monitor-status" id="monitor-status">
@@ -677,11 +784,153 @@ canvas {
         </main>
     </div>
 
+            <!-- Upload Tab -->
+            <div id="tab-upload" class="tab-content">
+                <div class="upload-container">
+                    <div class="upload-zone" id="upload-zone">
+                        <i class="fas fa-file-csv"></i>
+                        <h3>Importar archivo CSV</h3>
+                        <p>Arrastra aquí el archivo CSV de Lensware o haz clic para seleccionarlo.<br>
+                           Puedes navegarlo directamente desde <strong>\\172.16.8.32\Lensware\...\REPORTS</strong></p>
+                        <button class="btn-primary" onclick="document.getElementById('csv-file-input').click()">
+                            <i class="fas fa-folder-open"></i> Seleccionar archivo
+                        </button>
+                        <input type="file" id="csv-file-input" accept=".csv">
+                    </div>
+
+                    <div class="upload-filename" id="upload-filename">
+                        <i class="fas fa-file-csv" style="color:#10b981;"></i>
+                        <span id="upload-filename-text">archivo.csv</span>
+                    </div>
+
+                    <div class="upload-progress" id="upload-progress">
+                        <div class="upload-progress-bar" id="upload-progress-bar"></div>
+                    </div>
+
+                    <div class="upload-result" id="upload-result">
+                        <i id="upload-result-icon" class="fas fa-check-circle"></i>
+                        <span id="upload-result-text"></span>
+                    </div>
+
+                    <button class="btn-upload-send" id="btn-upload-send" disabled>
+                        <i class="fas fa-cloud-upload-alt"></i> Subir y procesar CSV
+                    </button>
+
+                    <div class="upload-info-box">
+                        <h4><i class="fas fa-info-circle" style="color:#3b82f6;"></i> Archivos aceptados</h4>
+                        Prefijos válidos: <code>UNI_PROD_ALL_ACT_</code> · <code>UNI_PROD_SIMPLE_ACT_</code><br>
+                        Formato: <code>.csv</code> · Codificación: UTF-8, ISO-8859-1 o Windows-1252<br>
+                        Tamaño máximo: <code>50 MB</code><br><br>
+                        <strong>Cómo acceder a la carpeta de red:</strong><br>
+                        En el explorador de Windows abre <code>\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS</code>
+                        y selecciona el CSV más reciente.
+                    </div>
+                </div>
+            </div>
+
     <!-- Modals -->
     <div id="modal-backups" class="modal"><div class="modal-content"><div class="modal-header"><h2><i class="fas fa-archive"></i> Respaldos</h2><button class="modal-close">&times;</button></div><div class="modal-body"><div id="backups-list"></div></div></div></div>
     <div id="modal-device" class="modal"><div class="modal-content modal-large"><div class="modal-header"><h2 id="modal-device-title">Detalle del Dispositivo</h2><button class="modal-close">&times;</button></div><div class="modal-body"><div id="device-details"></div></div></div></div>
     <div id="modal-detail" class="modal"><div class="modal-content"><div class="modal-header"><h2 id="detail-title">Detalle</h2><button class="modal-close">&times;</button></div><div class="modal-body" id="detail-body"></div></div></div>
 
     <script src="js/app.js"></script>
+    <script>
+    // ========== UPLOAD CSV ==========
+    (function() {
+        const zone      = document.getElementById('upload-zone');
+        const input     = document.getElementById('csv-file-input');
+        const nameBox   = document.getElementById('upload-filename');
+        const nameText  = document.getElementById('upload-filename-text');
+        const sendBtn   = document.getElementById('btn-upload-send');
+        const progress  = document.getElementById('upload-progress');
+        const progBar   = document.getElementById('upload-progress-bar');
+        const result    = document.getElementById('upload-result');
+        const resultIcon= document.getElementById('upload-result-icon');
+        const resultText= document.getElementById('upload-result-text');
+
+        let selectedFile = null;
+
+        // Drag & drop
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            zone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file) setFile(file);
+        });
+
+        input.addEventListener('change', () => {
+            if (input.files[0]) setFile(input.files[0]);
+        });
+
+        function setFile(file) {
+            selectedFile = file;
+            nameText.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+            nameBox.classList.add('visible');
+            sendBtn.disabled = false;
+            hideResult();
+        }
+
+        sendBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            sendBtn.disabled = true;
+            progress.classList.add('visible');
+            progBar.style.width = '30%';
+            hideResult();
+
+            const formData = new FormData();
+            formData.append('csv_file', selectedFile);
+
+            // Leer UPLOAD_SECRET desde meta tag o usar vacío (Railway lo valida)
+            const secret = document.querySelector('meta[name="upload-secret"]')?.content || '';
+            if (secret) formData.append('secret', secret);
+
+            try {
+                progBar.style.width = '60%';
+                const response = await fetch('api.php?action=upload_csv', {
+                    method: 'POST',
+                    headers: secret ? { 'X-Upload-Secret': secret } : {},
+                    body: formData
+                });
+
+                progBar.style.width = '100%';
+                const data = await response.json();
+
+                setTimeout(() => {
+                    progress.classList.remove('visible');
+                    progBar.style.width = '0%';
+
+                    if (data.success) {
+                        showResult('success', '✅ ' + (data.message || 'CSV importado correctamente'));
+                        // Recargar datos del dashboard automáticamente
+                        setTimeout(() => {
+                            if (typeof loadData === 'function') loadData();
+                        }, 800);
+                    } else {
+                        showResult('error', '❌ ' + (data.error || 'Error al subir el archivo'));
+                    }
+                    sendBtn.disabled = false;
+                }, 400);
+
+            } catch (err) {
+                progress.classList.remove('visible');
+                showResult('error', '❌ Error de conexión: ' + err.message);
+                sendBtn.disabled = false;
+            }
+        });
+
+        function showResult(type, msg) {
+            result.className = 'upload-result visible ' + type;
+            resultIcon.className = type === 'success' ? 'fas fa-check-circle' : 'fas fa-times-circle';
+            resultText.textContent = msg;
+        }
+
+        function hideResult() {
+            result.classList.remove('visible');
+        }
+    })();
+    </script>
 </body>
 </html>
