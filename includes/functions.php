@@ -3,37 +3,25 @@
 
 require_once __DIR__ . '/../config.php';
 
-// --------------------------------------------------------------------------
-// Busca el CSV más reciente en uploads/ según los prefijos configurados
-// --------------------------------------------------------------------------
 function findLatestCSV(): ?string {
     $folder = WATCH_FOLDER;
     if (!is_dir($folder)) return null;
-
-    $latest   = null;
-    $latestTs = 0;
-
+    $latest = null; $latestTs = 0;
     foreach (CSV_PREFIXES as $prefix) {
-        $pattern = $folder . '/' . $prefix . '*.csv';
-        foreach (glob($pattern) as $file) {
+        foreach (glob($folder . '/' . $prefix . '*.csv') as $file) {
             $ts = filemtime($file);
-            if ($ts > $latestTs) {
-                $latestTs = $ts;
-                $latest   = $file;
-            }
+            if ($ts > $latestTs) { $latestTs = $ts; $latest = $file; }
         }
     }
-
     return $latest;
 }
 
-// --------------------------------------------------------------------------
-// Procesa el CSV y devuelve los registros normalizados
-// --------------------------------------------------------------------------
+// Columnas reales Lensware (TAB separado):
+// Job | Date | Time | Status | Text | Batch/Info | User | Device |
+// Sg | R/L | Option | Type | DM | Lens description |
+// Blank description | Bcrv | Index | Reason | Reason Descr | Dep BR/RM
 function processCSV(string $filepath): ?array {
     if (!file_exists($filepath)) return null;
-
-    // Leer el archivo, detectar encoding y convertir a UTF-8
     $raw = file_get_contents($filepath);
     if ($raw === false) return null;
 
@@ -41,129 +29,179 @@ function processCSV(string $filepath): ?array {
     if ($encoding && $encoding !== 'UTF-8') {
         $raw = mb_convert_encoding($raw, 'UTF-8', $encoding);
     }
+    $raw = ltrim($raw, "\xEF\xBB\xBF");
 
-    // Separar líneas, detectar delimitador
     $lines = preg_split('/\r\n|\n|\r/', trim($raw));
     if (count($lines) < 2) return null;
 
-    $header    = str_getcsv($lines[0], ',');
-    $delimiter = (count($header) > 3) ? ',' : ';';
-    $header    = str_getcsv($lines[0], $delimiter);
-    $header    = array_map('trim', $header);
+    $delimiter = "\t";
+    $header    = array_map('trim', str_getcsv($lines[0], $delimiter));
 
     global $STATUS_LABELS;
-
     $records = [];
+
     for ($i = 1; $i < count($lines); $i++) {
         $line = trim($lines[$i]);
         if ($line === '') continue;
 
         $cols = str_getcsv($line, $delimiter);
-        if (count($cols) < count($header)) {
-            $cols = array_pad($cols, count($header), '');
-        }
+        if (count($cols) > count($header)) $cols = array_slice($cols, 0, count($header));
+        elseif (count($cols) < count($header)) $cols = array_pad($cols, count($header), '');
 
         $row = array_combine($header, $cols);
         if (!$row) continue;
 
-        // Normalizar campos comunes (ajusta los nombres de columna a tu CSV real)
-        $job        = trim($row['JOB_NUMBER']    ?? $row['job']     ?? '');
-        $status     = trim($row['STATUS']        ?? $row['status']  ?? '');
-        $dateRaw    = trim($row['DATE']          ?? $row['date']    ?? '');
-        $timeRaw    = trim($row['TIME']          ?? $row['time']    ?? '');
-        $user       = trim($row['USER']          ?? $row['user']    ?? '');
-        $device     = trim($row['DEVICE']        ?? $row['device']  ?? '');
-        $side       = trim($row['SIDE']          ?? $row['side']    ?? '');
-        $lensDesc   = trim($row['LENS_DESC']     ?? $row['lens']    ?? '');
-        $blankDesc  = trim($row['BLANK_DESC']    ?? $row['blank']   ?? '');
-        $reason     = trim($row['REASON_CODE']   ?? $row['reason']  ?? '');
-        $reasonDescr= trim($row['REASON_DESCR']  ?? '');
-
+        $job         = trim($row['Job']               ?? '');
         if ($job === '') continue;
+
+        $status      = trim($row['Status']            ?? '');
+        $dateRaw     = trim($row['Date']              ?? '');
+        $timeRaw     = trim($row['Time']              ?? '');
+        $user        = trim($row['User']              ?? '');
+        $device      = trim($row['Device']            ?? '');
+        $side        = trim($row['R/L']               ?? '');
+        $lensDesc    = trim($row['Lens description']  ?? '');
+        $blankDesc   = trim($row['Blank description'] ?? '');
+        $reason      = trim($row['Reason']            ?? '');
+        $reasonDescr = trim($row['Reason Descr']      ?? '');
+        $dep         = trim($row['Dep BR/RM']         ?? '');
+        $indexRaw    = trim($row['Index']             ?? '');
+
+        $sideLabel = match($side) { 'R' => 'OD', 'L' => 'OI', default => $side };
 
         $records[] = [
             'job'          => $job,
             'status'       => $status,
             'status_label' => $STATUS_LABELS[$status] ?? $status,
+            'is_breakage'  => ($status === 'BREA'),
             'date_raw'     => $dateRaw,
             'time_raw'     => $timeRaw,
             'user'         => $user,
             'device'       => $device,
             'side'         => $side,
-            'side_label'   => ($side === 'OD') ? 'OD' : (($side === 'OI') ? 'OI' : $side),
+            'side_label'   => $sideLabel,
             'lens_desc'    => $lensDesc,
             'blank_desc'   => $blankDesc,
             'reason'       => $reason,
             'reason_descr' => $reasonDescr,
+            'dep'          => $dep,
+            'text'         => trim($row['Text']       ?? ''),
+            'batch_info'   => trim($row['Batch/Info'] ?? ''),
+            'sg'           => trim($row['Sg']         ?? ''),
+            'option'       => trim($row['Option']     ?? ''),
+            'type'         => trim($row['Type']       ?? ''),
+            'dm'           => trim($row['DM']         ?? ''),
+            'bcrv'         => trim($row['Bcrv']       ?? ''),
+            'index_val'    => $indexRaw !== '' ? (float)$indexRaw : null,
         ];
     }
 
     return ['records' => $records, 'filename' => basename($filepath)];
 }
 
-// --------------------------------------------------------------------------
-// Estadísticas generales
-// --------------------------------------------------------------------------
 function calculateStats(array $records): array {
-    $total    = count($records);
-    $breakages = 0;
-    $byStatus  = [];
+    $total = count($records);
+    $byStatus = []; $byHour = array_fill(0, 24, 0);
+    $byDevice = []; $byUser = []; $byCause = [];
+    $jobsSet = []; $jobsBrea = []; $breaDev = []; $breaUser = [];
+    $eventos = 0;
 
     foreach ($records as $r) {
         $s = $r['status'];
         $byStatus[$s] = ($byStatus[$s] ?? 0) + 1;
-        if ($s === 'BREA') $breakages++;
+
+        $hour = (int)substr($r['time_raw'], 0, 2);
+        if ($hour >= 0 && $hour < 24) $byHour[$hour]++;
+
+        $dev = $r['device'] ?: 'Desconocido';
+        $byDevice[$dev] = ($byDevice[$dev] ?? 0) + 1;
+
+        $usr = $r['user'] ?: 'Desconocido';
+        $byUser[$usr] = ($byUser[$usr] ?? 0) + 1;
+
+        $jobsSet[$r['job']] = true;
+
+        if ($r['is_breakage']) {
+            $eventos++;
+            $jobsBrea[$r['job']] = true;
+            $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
+            $byCause[$cause] = ($byCause[$cause] ?? 0) + 1;
+            $breaDev[$dev]   = ($breaDev[$dev]   ?? 0) + 1;
+            $breaUser[$usr]  = ($breaUser[$usr]  ?? 0) + 1;
+        }
     }
 
+    arsort($byDevice); arsort($byUser); arsort($byCause);
+
+    $jobsUnicos  = count($jobsSet);
+    $jobsConBrea = count($jobsBrea);
+
     return [
-        'total'          => $total,
-        'breakages'      => $breakages,
-        'breakage_rate'  => $total > 0 ? round($breakages / $total * 100, 2) : 0,
-        'by_status'      => $byStatus,
+        'total'         => $total,
+        'jobs_unicos'   => $jobsUnicos,
+        'jobs_con_brea' => $jobsConBrea,
+        'brea_tasa'     => $jobsUnicos > 0 ? round($jobsConBrea / $jobsUnicos * 100, 2) : 0,
+        'eventos_brea'  => $eventos,
+        'usuarios'      => count($byUser),
+        'dispositivos'  => count($byDevice),
+        'lentes_tipos'  => count(array_unique(array_column($records, 'lens_desc'))),
+        'por_status'    => $byStatus,
+        'por_hora'      => $byHour,
+        'por_device'    => $byDevice,
+        'por_user'      => $byUser,
+        'brea_causa'    => $byCause,
+        'brea_device'   => $breaDev,
+        'brea_por_user' => $breaUser,
     ];
 }
 
-// --------------------------------------------------------------------------
-// Registros de quiebras
-// --------------------------------------------------------------------------
 function getBreakages(array $records): array {
-    return array_values(array_filter($records, fn($r) => $r['status'] === 'BREA'));
+    return array_values(array_filter($records, fn($r) => $r['is_breakage']));
 }
 
-// --------------------------------------------------------------------------
-// Estadísticas por dispositivo
-// --------------------------------------------------------------------------
 function getDeviceStats(array $records): array {
-    $stats = [];
+    $stats = []; $jobs = [];
     foreach ($records as $r) {
         $dev = $r['device'] ?: 'Desconocido';
         if (!isset($stats[$dev])) {
-            $stats[$dev] = ['device' => $dev, 'total' => 0, 'breakages' => 0];
+            $stats[$dev] = ['name' => $dev, 'device' => $dev, 'total' => 0, 'jobs' => 0, 'brea' => 0, 'breakages' => 0, 'rate' => 0];
+            $jobs[$dev]  = [];
         }
         $stats[$dev]['total']++;
-        if ($r['status'] === 'BREA') $stats[$dev]['breakages']++;
+        $jobs[$dev][$r['job']] = true;
+        if ($r['is_breakage']) { $stats[$dev]['brea']++; $stats[$dev]['breakages']++; }
+    }
+    foreach ($stats as $dev => &$s) {
+        $s['jobs'] = count($jobs[$dev]);
+        $s['rate'] = $s['jobs'] > 0 ? round($s['brea'] / $s['jobs'] * 100, 2) : 0;
     }
     usort($stats, fn($a, $b) => $b['total'] - $a['total']);
     return array_values($stats);
 }
 
-// --------------------------------------------------------------------------
-// Detalles de un dispositivo específico
-// --------------------------------------------------------------------------
 function getDeviceDetails(array $records, string $deviceName): array {
-    return array_values(array_filter($records, fn($r) => $r['device'] === $deviceName));
+    $filtered = array_values(array_filter($records, fn($r) => $r['device'] === $deviceName));
+    $hourDist = array_fill(0, 24, 0); $jobs = []; $brea = 0;
+    foreach ($filtered as $r) {
+        $hour = (int)substr($r['time_raw'], 0, 2);
+        if ($hour >= 0 && $hour < 24) $hourDist[$hour]++;
+        if (!isset($jobs[$r['job']])) $jobs[$r['job']] = ['total' => 0, 'brea' => 0];
+        $jobs[$r['job']]['total']++;
+        if ($r['is_breakage']) { $jobs[$r['job']]['brea']++; $brea++; }
+    }
+    arsort($jobs);
+    return [
+        'records' => $filtered, 'total_records' => count($filtered),
+        'total_jobs' => count($jobs), 'breakages' => $brea,
+        'hour_distribution' => $hourDist, 'jobs' => $jobs,
+    ];
 }
 
-// --------------------------------------------------------------------------
-// Caché
-// --------------------------------------------------------------------------
 function readCache(): ?array {
     if (!file_exists(CACHE_FILE)) return null;
     if ((time() - filemtime(CACHE_FILE)) > CACHE_TTL) return null;
-
     $content = file_get_contents(CACHE_FILE);
     if (!$content) return null;
-
     $decoded = json_decode($content, true);
     return ($decoded && isset($decoded['data'])) ? $decoded['data'] : null;
 }
@@ -171,52 +209,32 @@ function readCache(): ?array {
 function saveCache(array $data): bool {
     $dir = dirname(CACHE_FILE);
     if (!is_dir($dir)) mkdir($dir, 0777, true);
-
-    // Limpiar caracteres problemáticos para JSON
     array_walk_recursive($data, function (&$val) {
         if (is_string($val)) {
             $val = mb_convert_encoding($val, 'UTF-8', 'UTF-8');
             $val = preg_replace('/[\x00-\x1F\x7F]/u', '', $val);
         }
     });
-
     $json = json_encode(['timestamp' => time(), 'data' => $data], JSON_UNESCAPED_UNICODE);
-    if ($json === false) {
-        logMessage('saveCache: json_encode falló - ' . json_last_error_msg(), 'error');
-        return false;
-    }
-
+    if ($json === false) { logMessage('saveCache error: ' . json_last_error_msg(), 'error'); return false; }
     return file_put_contents(CACHE_FILE, $json, LOCK_EX) !== false;
 }
 
-// --------------------------------------------------------------------------
-// Respaldo de CSV
-// --------------------------------------------------------------------------
 function backupCSV(string $filepath): void {
     if (!file_exists($filepath)) return;
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) mkdir($dir, 0777, true);
-
-    $dest = $dir . '/BACKUP_' . date('Ymd_His') . '_' . basename($filepath);
-    copy($filepath, $dest);
-    logMessage("Respaldo creado: " . basename($dest));
+    copy($filepath, $dir . '/BACKUP_' . date('Ymd_His') . '_' . basename($filepath));
+    logMessage("Respaldo creado: " . basename($filepath));
 }
 
-// --------------------------------------------------------------------------
-// Listado de respaldos
-// --------------------------------------------------------------------------
 function listBackups(): array {
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) return [];
-
     $files = glob($dir . '/BACKUP_*.csv') ?: [];
     $list  = [];
     foreach ($files as $f) {
-        $list[] = [
-            'filename' => basename($f),
-            'size'     => filesize($f),
-            'modified' => date('Y-m-d H:i:s', filemtime($f)),
-        ];
+        $list[] = ['filename' => basename($f), 'size' => filesize($f), 'modified' => date('Y-m-d H:i:s', filemtime($f))];
     }
     usort($list, fn($a, $b) => strcmp($b['modified'], $a['modified']));
     return $list;
