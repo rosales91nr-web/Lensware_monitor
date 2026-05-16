@@ -8,7 +8,8 @@ function findLatestCSV(): ?string {
     if (!is_dir($folder)) return null;
     $latest = null; $latestTs = 0;
     foreach (CSV_PREFIXES as $prefix) {
-        foreach (glob($folder . '/' . $prefix . '*.csv') as $file) {
+        // Buscar tanto .csv como .CSV
+        foreach (array_merge(glob($folder . '/' . $prefix . '*.csv'), glob($folder . '/' . $prefix . '*.CSV')) as $file) {
             $ts = filemtime($file);
             if ($ts > $latestTs) { $latestTs = $ts; $latest = $file; }
         }
