@@ -21,21 +21,57 @@ function findLatestCSV(): ?string {
 // Sg | R/L | Option | Type | DM | Lens description |
 // Blank description | Bcrv | Index | Reason | Reason Descr | Dep BR/RM
 function processCSV(string $filepath): ?array {
-    if (!file_exists($filepath)) return null;
+    if (!file_exists($filepath)) {
+        logMessage("Archivo no encontrado: $filepath", 'error');
+        return null;
+    }
+    
     $raw = file_get_contents($filepath);
-    if ($raw === false) return null;
+    if ($raw === false) {
+        logMessage("No se pudo leer el archivo: $filepath", 'error');
+        return null;
+    }
 
+    // Debug: log primeros 500 caracteres
+    logMessage("Primeros 500 caracteres del archivo: " . substr($raw, 0, 500));
+
+    // Remover BOM
+    $raw = ltrim($raw, "\xEF\xBB\xBF");
+    
+    // Detectar encoding
     $encoding = mb_detect_encoding($raw, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+    logMessage("Encoding detectado: " . ($encoding ?: 'desconocido'));
+    
     if ($encoding && $encoding !== 'UTF-8') {
         $raw = mb_convert_encoding($raw, 'UTF-8', $encoding);
     }
-    $raw = ltrim($raw, "\xEF\xBB\xBF");
 
+    // Dividir en líneas
     $lines = preg_split('/\r\n|\n|\r/', trim($raw));
-    if (count($lines) < 2) return null;
+    if (count($lines) < 2) {
+        logMessage("Archivo con menos de 2 líneas: " . count($lines), 'error');
+        return null;
+    }
 
+    // Obtener cabecera
     $delimiter = "\t";
-    $header    = array_map('trim', str_getcsv($lines[0], $delimiter));
+    $header = array_map('trim', str_getcsv($lines[0], $delimiter));
+    
+    logMessage("Cabecera encontrada (" . count($header) . " columnas): " . json_encode($header));
+    
+    // Verificar columnas requeridas
+    $requiredCols = ['Job', 'Status', 'Date', 'Time'];
+    $missingCols = [];
+    foreach ($requiredCols as $col) {
+        if (!in_array($col, $header)) {
+            $missingCols[] = $col;
+        }
+    }
+    
+    if (!empty($missingCols)) {
+        logMessage("Columnas requeridas faltantes: " . json_encode($missingCols), 'error');
+        return null;
+    }
 
     global $STATUS_LABELS;
     $records = [];
@@ -45,57 +81,66 @@ function processCSV(string $filepath): ?array {
         if ($line === '') continue;
 
         $cols = str_getcsv($line, $delimiter);
-        if (count($cols) > count($header)) $cols = array_slice($cols, 0, count($header));
-        elseif (count($cols) < count($header)) $cols = array_pad($cols, count($header), '');
+        
+        // Ajustar número de columnas
+        if (count($cols) > count($header)) {
+            $cols = array_slice($cols, 0, count($header));
+        } elseif (count($cols) < count($header)) {
+            $cols = array_pad($cols, count($header), '');
+        }
 
         $row = array_combine($header, $cols);
-        if (!$row) continue;
+        if (!$row) {
+            logMessage("Error al combinar fila $i", 'warning');
+            continue;
+        }
 
-        $job         = trim($row['Job']               ?? '');
+        $job = trim($row['Job'] ?? '');
         if ($job === '') continue;
 
-        $status      = trim($row['Status']            ?? '');
-        $dateRaw     = trim($row['Date']              ?? '');
-        $timeRaw     = trim($row['Time']              ?? '');
-        $user        = trim($row['User']              ?? '');
-        $device      = trim($row['Device']            ?? '');
-        $side        = trim($row['R/L']               ?? '');
-        $lensDesc    = trim($row['Lens description']  ?? '');
-        $blankDesc   = trim($row['Blank description'] ?? '');
-        $reason      = trim($row['Reason']            ?? '');
-        $reasonDescr = trim($row['Reason Descr']      ?? '');
-        $dep         = trim($row['Dep BR/RM']         ?? '');
-        $indexRaw    = trim($row['Index']             ?? '');
-
-        $sideLabel = match($side) { 'R' => 'OD', 'L' => 'OI', default => $side };
+        // Procesar fecha y hora
+        $dateRaw = trim($row['Date'] ?? '');
+        $timeRaw = trim($row['Time'] ?? '');
+        
+        // Validar formato de hora (HH:MM:SS o HH:MM)
+        if (!empty($timeRaw) && !preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $timeRaw)) {
+            logMessage("Formato de hora inválido en fila $i: $timeRaw", 'warning');
+            $timeRaw = '00:00:00';
+        }
 
         $records[] = [
             'job'          => $job,
-            'status'       => $status,
-            'status_label' => $STATUS_LABELS[$status] ?? $status,
-            'is_breakage'  => ($status === 'BREA'),
+            'status'       => trim($row['Status'] ?? ''),
+            'status_label' => $STATUS_LABELS[trim($row['Status'] ?? '')] ?? trim($row['Status'] ?? ''),
+            'is_breakage'  => (trim($row['Status'] ?? '') === 'BREA'),
             'date_raw'     => $dateRaw,
             'time_raw'     => $timeRaw,
-            'user'         => $user,
-            'device'       => $device,
-            'side'         => $side,
-            'side_label'   => $sideLabel,
-            'lens_desc'    => $lensDesc,
-            'blank_desc'   => $blankDesc,
-            'reason'       => $reason,
-            'reason_descr' => $reasonDescr,
-            'dep'          => $dep,
-            'text'         => trim($row['Text']       ?? ''),
+            'user'         => trim($row['User'] ?? ''),
+            'device'       => trim($row['Device'] ?? ''),
+            'side'         => trim($row['R/L'] ?? ''),
+            'side_label'   => match(trim($row['R/L'] ?? '')) { 'R' => 'OD', 'L' => 'OI', default => trim($row['R/L'] ?? '') },
+            'lens_desc'    => trim($row['Lens description'] ?? ''),
+            'blank_desc'   => trim($row['Blank description'] ?? ''),
+            'reason'       => trim($row['Reason'] ?? ''),
+            'reason_descr' => trim($row['Reason Descr'] ?? ''),
+            'dep'          => trim($row['Dep BR/RM'] ?? ''),
+            'text'         => trim($row['Text'] ?? ''),
             'batch_info'   => trim($row['Batch/Info'] ?? ''),
-            'sg'           => trim($row['Sg']         ?? ''),
-            'option'       => trim($row['Option']     ?? ''),
-            'type'         => trim($row['Type']       ?? ''),
-            'dm'           => trim($row['DM']         ?? ''),
-            'bcrv'         => trim($row['Bcrv']       ?? ''),
-            'index_val'    => $indexRaw !== '' ? (float)$indexRaw : null,
+            'sg'           => trim($row['Sg'] ?? ''),
+            'option'       => trim($row['Option'] ?? ''),
+            'type'         => trim($row['Type'] ?? ''),
+            'dm'           => trim($row['DM'] ?? ''),
+            'bcrv'         => trim($row['Bcrv'] ?? ''),
+            'index_val'    => ($indexRaw = trim($row['Index'] ?? '')) !== '' ? (float)$indexRaw : null,
         ];
     }
 
+    if (empty($records)) {
+        logMessage("No se encontraron registros válidos en el archivo", 'error');
+        return null;
+    }
+
+    logMessage("Procesados " . count($records) . " registros exitosamente");
     return ['records' => $records, 'filename' => basename($filepath)];
 }
 
