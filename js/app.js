@@ -153,16 +153,19 @@ async function loadData() {
     try {
         const response = await fetch('api.php?action=data');
         const result = await response.json();
-        if (result.success) {
+        if (result.success && result.data?.records?.length) {
             appData = result.data;
             appData.lastUpdate = new Date();
             updateUI();
             updateStatus(true);
-            document.getElementById('file-info').textContent = `📄 Archivo: ${appData.filename}`;
+            const src = appData.data_source === 'backup' ? ' (desde respaldo)' : '';
+            document.getElementById('file-info').textContent = `📄 Archivo: ${appData.filename}${src}`;
             document.getElementById('last-update').textContent = formatTime(new Date());
             document.getElementById('backup-folder').textContent = `Carpeta de respaldos: ${appData.backup_folder || 'desconocida'}`;
         } else {
-            updateStatus(false, result.error);
+            const msg = result.error || result.hint || 'Esperando CSV del monitor de Windows...';
+            updateStatus(false, msg);
+            document.getElementById('file-info').textContent = msg;
         }
     } catch (error) {
         updateStatus(false, error.message);

@@ -19,6 +19,60 @@ function findLatestCSV(): ?string {
     return $latest;
 }
 
+/** Último respaldo BACKUP_*.csv (útil cuando uploads/ está vacío tras redeploy en Railway). */
+function findLatestBackupCSV(): ?string {
+    $dir = BACKUP_FOLDER;
+    if (!is_dir($dir)) return null;
+    $files = glob($dir . '/BACKUP_*.csv') ?: [];
+    if (empty($files)) return null;
+    usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
+    return $files[0];
+}
+
+/** uploads/ primero; si no hay CSV, el backup más reciente. */
+function findLatestDataSource(): ?string {
+    return findLatestCSV() ?: findLatestBackupCSV();
+}
+
+function isBackupFile(string $filepath): bool {
+    return str_starts_with(basename($filepath), 'BACKUP_');
+}
+
+/** Nombre legible del CSV (sin prefijo BACKUP_fecha_). */
+function displayFilename(string $filepath): string {
+    $name = basename($filepath);
+    if (preg_match('/^BACKUP_\d{8}(?:_\d{4,6})?_(.+)$/i', $name, $m)) {
+        return $m[1];
+    }
+    return $name;
+}
+
+/** Construye el payload del dashboard (registros, stats, quiebras, etc.). */
+function buildLiveDataPayload(string $filepath): ?array {
+    if (!file_exists($filepath)) return null;
+
+    $data = processCSV($filepath);
+    if (!$data || empty($data['records'])) return null;
+
+    return [
+        'records'       => $data['records'],
+        'stats'         => calculateStats($data['records']),
+        'breakages'     => getBreakages($data['records']),
+        'device_stats'  => getDeviceStats($data['records']),
+        'filename'      => displayFilename($filepath),
+        'source_file'   => basename($filepath),
+        'data_source'   => isBackupFile($filepath) ? 'backup' : 'upload',
+        'backup_folder' => BACKUP_FOLDER,
+    ];
+}
+
+/** Procesa un CSV y guarda caché (tras upload o refresh). */
+function warmCacheFromFile(string $filepath): bool {
+    $payload = buildLiveDataPayload($filepath);
+    if (!$payload) return false;
+    return saveCache($payload);
+}
+
 function processCSV(string $filepath): ?array {
     if (!file_exists($filepath)) {
         logMessage("Archivo no encontrado: $filepath", 'error');

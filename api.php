@@ -50,26 +50,23 @@ try {
                 respondJson(['success' => true, 'data' => $cache]);
             }
 
-            $latestCSV = findLatestCSV();
-            if (!$latestCSV) {
-                respondJson(['success' => false, 'error' => 'No se encontró archivo CSV en uploads/'], 404);
+            $sourceFile = findLatestDataSource();
+            if (!$sourceFile) {
+                respondJson([
+                    'success' => false,
+                    'error'   => 'No hay datos disponibles. Sube un CSV con el monitor de Windows o Importar CSV.',
+                    'hint'    => 'Verifica que el monitor esté activo y UPLOAD_SECRET coincida en Railway.',
+                ], 200);
             }
 
-            ensureCSVBackups($latestCSV);
-
-            $data = processCSV($latestCSV);
-            if (!$data || empty($data['records'])) {
-                respondJson(['success' => false, 'error' => 'Error al procesar CSV'], 500);
+            if (!isBackupFile($sourceFile)) {
+                ensureCSVBackups($sourceFile);
             }
 
-            $result = [
-                'records'       => $data['records'],
-                'stats'         => calculateStats($data['records']),
-                'breakages'     => getBreakages($data['records']),
-                'device_stats'  => getDeviceStats($data['records']),
-                'filename'      => $data['filename'],
-                'backup_folder' => BACKUP_FOLDER
-            ];
+            $result = buildLiveDataPayload($sourceFile);
+            if (!$result) {
+                respondJson(['success' => false, 'error' => 'Error al procesar el archivo de datos'], 500);
+            }
 
             saveCache($result);
             respondJson(['success' => true, 'data' => $result]);
@@ -309,10 +306,17 @@ try {
                 respondJson(['success' => false, 'error' => 'Error al guardar archivo'], 500);
             }
 
-            if (file_exists(CACHE_FILE)) unlink(CACHE_FILE);
+            ensureCSVBackups($dest);
+            $payload = buildLiveDataPayload($dest);
+            $cached  = $payload && saveCache($payload);
 
-            logMessage("CSV subido: $origName");
-            respondJson(['success' => true, 'message' => "CSV recibido: $origName"]);
+            logMessage("CSV subido: $origName" . ($cached ? ' (caché actualizada)' : ' (sin caché)'));
+            respondJson([
+                'success' => true,
+                'message' => "CSV recibido: $origName",
+                'cached'  => $cached,
+                'records' => $cached ? count($payload['records']) : 0,
+            ]);
 
         // ------------------------------------------------------------------ //
         case 'export':
