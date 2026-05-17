@@ -1172,7 +1172,7 @@
         <!-- Firma -->
         <div class="firma">
             Sistema de Monitoreo Lensware | © <?php echo date("Y"); ?>
-            <p>By: Nestor Rosales | Rosalesdev91</p>
+            <p>Desarrollado Por: Nestor Rosales | Rosalesdev91</p>
         </div>
         </div>
     </main>
