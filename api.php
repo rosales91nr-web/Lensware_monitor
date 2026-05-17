@@ -342,7 +342,7 @@ try {
                         $b['job'],        $b['date_raw'],      $b['time_raw'],
                         $b['side_label'], $b['reason_descr'] ?? '',
                         $b['user'] ?? '', $b['lens_desc']   ?? '',
-                        formatBlankDescription($b, true, true),
+                        formatBlankDescription($b),
                     ]);
                 }
             } else {

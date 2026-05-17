@@ -3,6 +3,43 @@
 
 require_once __DIR__ . '/../config.php';
 
+/** Normaliza texto del CSV a UTF-8 legible (evita Mï¿½, Ã³, etc.). */
+function sanitizeCsvField(string $value): string {
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    if (!mb_check_encoding($value, 'UTF-8')) {
+        $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
+    }
+
+    // Mojibake: UTF-8 interpretado como Latin-1/Win-1252
+    if (preg_match('/ï¿½|Ã[\x80-\xBF]|â€/u', $value)) {
+        $fixed = @mb_convert_encoding(
+            mb_convert_encoding($value, 'ISO-8859-1', 'UTF-8'),
+            'UTF-8',
+            'ISO-8859-1'
+        );
+        if ($fixed && mb_check_encoding($fixed, 'UTF-8') && !preg_match('/ï¿½/u', $fixed)) {
+            $value = $fixed;
+        }
+    }
+
+    return $value;
+}
+
+function normalizeCsvEncoding(string $raw): string {
+    if (mb_check_encoding($raw, 'UTF-8')) {
+        return $raw;
+    }
+    $encoding = mb_detect_encoding($raw, ['UTF-8', 'Windows-1252', 'ISO-8859-1'], true);
+    if ($encoding && $encoding !== 'UTF-8') {
+        return mb_convert_encoding($raw, 'UTF-8', $encoding);
+    }
+    return mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');
+}
+
 function findLatestCSV(): ?string {
     $folder = WATCH_FOLDER;
     if (!is_dir($folder)) return null;
@@ -86,11 +123,7 @@ function processCSV(string $filepath): ?array {
     }
 
     $raw = ltrim($raw, "\xEF\xBB\xBF");
-
-    $encoding = mb_detect_encoding($raw, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
-    if ($encoding && $encoding !== 'UTF-8') {
-        $raw = mb_convert_encoding($raw, 'UTF-8', $encoding);
-    }
+    $raw = normalizeCsvEncoding($raw);
 
     $lines = preg_split('/\r\n|\n|\r/', trim($raw));
     if (count($lines) < 2) {
@@ -152,32 +185,34 @@ function processCSV(string $filepath): ?array {
             continue;
         }
 
-        $job = trim($row['Job'] ?? '');
+        $job = sanitizeCsvField($row['Job'] ?? '');
         if ($job === '') continue;
+
+        $status = sanitizeCsvField($row['Status'] ?? '');
 
         $records[] = [
             'job'          => $job,
-            'status'       => trim($row['Status'] ?? ''),
-            'status_label' => $STATUS_LABELS[trim($row['Status'] ?? '')] ?? trim($row['Status'] ?? ''),
-            'is_breakage'  => (trim($row['Status'] ?? '') === 'BREA'),
-            'date_raw'     => trim($row['Date'] ?? ''),
-            'time_raw'     => trim($row['Time'] ?? ''),
-            'user'         => trim($row['User'] ?? ''),
-            'device'       => trim($row['Device'] ?? ''),
-            'side'         => trim($row['R/L'] ?? ''),
-            'side_label'   => match(trim($row['R/L'] ?? '')) { 'R' => 'OD', 'L' => 'OI', default => trim($row['R/L'] ?? '') },
-            'lens_desc'    => trim($row['Lens description'] ?? ''),
-            'blank_desc'   => trim($row['Blank description'] ?? ''),
-            'reason'       => trim($row['Reason'] ?? ''),
-            'reason_descr' => trim($row['Reason Descr'] ?? ''),
-            'dep'          => trim($row['Dep BR/RM'] ?? ''),
-            'text'         => trim($row['Text'] ?? ''),
-            'batch_info'   => trim($row['Batch/Info'] ?? ''),
-            'sg'           => trim($row['Sg'] ?? ''),
-            'option'       => trim($row['Option'] ?? ''),
-            'type'         => trim($row['Type'] ?? ''),
-            'dm'           => trim($row['DM'] ?? ''),
-            'bcrv'         => trim($row['Bcrv'] ?? ''),
+            'status'       => $status,
+            'status_label' => $STATUS_LABELS[$status] ?? $status,
+            'is_breakage'  => ($status === 'BREA'),
+            'date_raw'     => sanitizeCsvField($row['Date'] ?? ''),
+            'time_raw'     => sanitizeCsvField($row['Time'] ?? ''),
+            'user'         => sanitizeCsvField($row['User'] ?? ''),
+            'device'       => sanitizeCsvField($row['Device'] ?? ''),
+            'side'         => sanitizeCsvField($row['R/L'] ?? ''),
+            'side_label'   => match(sanitizeCsvField($row['R/L'] ?? '')) { 'R' => 'OD', 'L' => 'OI', default => sanitizeCsvField($row['R/L'] ?? '') },
+            'lens_desc'    => sanitizeCsvField($row['Lens description'] ?? ''),
+            'blank_desc'   => sanitizeCsvField($row['Blank description'] ?? ''),
+            'reason'       => sanitizeCsvField($row['Reason'] ?? ''),
+            'reason_descr' => sanitizeCsvField($row['Reason Descr'] ?? ''),
+            'dep'          => sanitizeCsvField($row['Dep BR/RM'] ?? ''),
+            'text'         => sanitizeCsvField($row['Text'] ?? ''),
+            'batch_info'   => sanitizeCsvField($row['Batch/Info'] ?? ''),
+            'sg'           => sanitizeCsvField($row['Sg'] ?? ''),
+            'option'       => sanitizeCsvField($row['Option'] ?? ''),
+            'type'         => sanitizeCsvField($row['Type'] ?? ''),
+            'dm'           => sanitizeCsvField($row['DM'] ?? ''),
+            'bcrv'         => sanitizeCsvField($row['Bcrv'] ?? ''),
             'index_val'    => ($indexRaw = trim($row['Index'] ?? '')) !== ''
                 ? (float) str_replace(',', '.', $indexRaw)
                 : null,

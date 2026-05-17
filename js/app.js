@@ -393,20 +393,38 @@ function fillSelect(id, options, placeholder) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Render Activity
 // ─────────────────────────────────────────────────────────────────────────────
-/**
- * Texto unificado para columna Blank description.
- * extras: { device, code } — datos de columnas eliminadas en quiebras.
- */
-function formatBlankDescription(r, extras = {}) {
-    const parts = [];
-    if (r.blank_desc?.trim()) parts.push(r.blank_desc.trim());
-    if (extras.device && r.device?.trim()) parts.push(r.device.trim());
-    if (extras.code && r.reason?.trim()) parts.push(`Cód. ${r.reason.trim()}`);
-    return parts.length ? parts.join(' · ') : '-';
+/** Corrige mojibake típico del CSV (Mï¿½ → MÓ, etc.) para mostrar en UI. */
+function fixTextEncoding(value) {
+    if (!value) return value;
+    if (!/ï¿½|Ã[\x80-\xBF]|â€/.test(value)) return value;
+    try {
+        const bytes = Uint8Array.from(value, c => c.charCodeAt(0) & 0xff);
+        const fixed = new TextDecoder('utf-8').decode(bytes);
+        if (fixed && !/ï¿½/.test(fixed)) return fixed;
+    } catch (_) { /* ignore */ }
+    return value;
 }
 
-function blankDescCellHtml(r, extras = {}) {
-    const text = formatBlankDescription(r, extras);
+/** Solo columna Blank description del CSV (sin dispositivo ni código de quiebra). */
+function formatBlankDescription(r) {
+    let text = fixTextEncoding(r.blank_desc?.trim() || '');
+    text = text.replace(/\s*·\s*Cód\.\s*\d+\s*$/i, '').trim();
+    return text || '-';
+}
+
+/** Blank en modal: partes del CSV unidas con · (notas tras ---). */
+function formatBlankDescriptionDetail(r) {
+    const raw = formatBlankDescription(r);
+    if (!raw || raw === '-') return '-';
+    return raw
+        .split(/\s*---\s*/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .join(' · ');
+}
+
+function blankDescCellHtml(r) {
+    const text = formatBlankDescription(r);
     return `<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(text)}">${escapeHtml(text)}</td>`;
 }
 
@@ -488,7 +506,7 @@ function renderBreakages() {
     const usr  = document.getElementById('filter-user')?.value  || '';
     const data = (appData.breakages || []).filter(r => {
         if (usr && r.user !== usr) return false;
-        const blankText = formatBlankDescription(r, { device: true, code: true }).toLowerCase();
+        const blankText = formatBlankDescription(r).toLowerCase();
         if (q && !(r.job?.toLowerCase().includes(q) || r.reason_descr?.toLowerCase().includes(q) || blankText.includes(q))) return false;
         return true;
     });
@@ -503,7 +521,7 @@ function renderBreakages() {
             <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr||'-')}</td>
             <td>${escapeHtml(r.user)}</td>
             <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
-            ${blankDescCellHtml(r, { device: true, code: true })}
+            ${blankDescCellHtml(r)}
         </tr>`).join('');
     document.getElementById('breakages-count').textContent = formatNumber(data.length);
 }
@@ -577,7 +595,7 @@ function searchRecordRowHtml(r) {
             <td>${escapeHtml(r.user)}</td>
             <td>${escapeHtml(r.device)}</td>
             <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.lens_desc)}">${escapeHtml(r.lens_desc || '-')}</td>
-            ${blankDescCellHtml(r, { device: r.is_breakage, code: r.is_breakage })}
+            ${blankDescCellHtml(r)}
         </tr>`;
 }
 
@@ -760,11 +778,12 @@ function showDetail(job, date, time) {
                     ${createDetailRow('Hora',record.time_raw)}
                     ${createDetailRow('Status',`${record.status} — ${record.status_label}`)}
                     ${createDetailRow('Usuario',record.user)}
+                    ${createDetailRow('Dispositivo',record.device)}
                     ${createDetailRow('Lado',record.side_label)}
                 </div>
             </div>
-            ${(record.lens_desc || record.blank_desc || record.device || record.reason)?`<div style="background:#f8fafc;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#3b82f6;">Lente y blank</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Lente',record.lens_desc)}${createDetailRow('Blank description',formatBlankDescription(record,{device:!!record.device,code:!!record.reason}))}${record.index_val?createDetailRow('Índice',record.index_val.toFixed(3)):''}</div></div>`:''}
-            ${record.is_breakage&&record.reason_descr?`<div style="background:#fef2f2;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#ef4444;">⚠️ Quiebra</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Causa',record.reason_descr,false,true)}${record.dep?createDetailRow('Dep. BR/RM',record.dep):''}</div></div>`:''}
+            ${(record.lens_desc || record.blank_desc || record.index_val != null)?`<div style="background:#f8fafc;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#3b82f6;">Lente y blank</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Lente',record.lens_desc)}${createDetailRow('Blank description',formatBlankDescriptionDetail(record))}${record.index_val!=null?createDetailRow('Índice',record.index_val.toFixed(3)):''}</div></div>`:''}
+            ${record.is_breakage?`<div style="background:#fef2f2;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#ef4444;">⚠️ Quiebra</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Causa',record.reason_descr,false,true)}${createDetailRow('Código',record.reason,false,true)}${record.dep?createDetailRow('Dep. BR/RM',record.dep):''}</div></div>`:''}
         </div>`;
     modal.classList.add('active');
 }
@@ -1052,7 +1071,7 @@ function renderHistContent(data) {
                                 <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr||'-')}</td>
                                 <td>${escapeHtml(r.user)}</td>
                                 <td>${escapeHtml(r.lens_desc)}</td>
-                                ${blankDescCellHtml(r, { device: true, code: true })}
+                                ${blankDescCellHtml(r)}
                             </tr>`).join('')}
                         </tbody>
                     </table>
