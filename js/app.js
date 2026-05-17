@@ -137,6 +137,8 @@ function switchTab(tabId) {
     document.getElementById('page-title').textContent = titles[tabId] || 'Dashboard';
 
     if (tabId === 'dashboard') refreshDashboardCharts();
+    if (tabId === 'devices') renderDevices();
+    if (tabId === 'operators') renderOperators();
     if (tabId === 'historico' && histState.backupsByDate.length === 0) loadHistBackupDays();
 }
 
@@ -147,6 +149,14 @@ function refreshDashboardCharts() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Normalizar payload API (snake_case → aliases usados en la UI)
+// ─────────────────────────────────────────────────────────────────────────────
+function normalizeAppData(data) {
+    data.deviceStats = data.device_stats || data.deviceStats || [];
+    return data;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Carga de datos en vivo
 // ─────────────────────────────────────────────────────────────────────────────
 async function loadData() {
@@ -154,7 +164,7 @@ async function loadData() {
         const response = await fetch('api.php?action=data');
         const result = await response.json();
         if (result.success && result.data?.records?.length) {
-            appData = result.data;
+            appData = normalizeAppData(result.data);
             appData.lastUpdate = new Date();
             updateUI();
             updateStatus(true);
@@ -461,7 +471,8 @@ function renderBreakages() {
 function renderDevices() {
     const tbody = document.getElementById('devices-tbody');
     if (!tbody) return;
-    tbody.innerHTML = (appData.deviceStats || []).map(d => `
+    const devices = appData.device_stats || appData.deviceStats || [];
+    tbody.innerHTML = devices.map(d => `
         <tr onclick="showDeviceDetail('${escapeHtml(d.device)}')" style="cursor:pointer;">
             <td><strong>${escapeHtml(d.device)}</strong></td>
             <td>${formatNumber(d.total)}</td>
