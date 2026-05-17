@@ -990,7 +990,7 @@
             </div>
             <div class="table-container">
                 <table class="data-table" id="breakages-table">
-                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Código</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th></tr></thead>
+                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th></tr></thead>
                     <tbody id="breakages-tbody"></tbody>
                 </table>
             </div>
@@ -1010,7 +1010,7 @@
             </div>
             <div class="table-container">
                 <table class="data-table" id="activity-table">
-                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th></tr></thead>
+                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th><th>Blank</th></tr></thead>
                     <tbody id="activity-tbody"></tbody>
                 </table>
             </div>
@@ -1025,7 +1025,7 @@
         <div id="tab-devices" class="tab-content">
             <div class="table-container">
                 <table class="data-table" id="devices-table">
-                    <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th><th>Quiebras</th><th>Tasa</th></tr></thead>
+                    <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th></tr></thead>
                     <tbody id="devices-tbody"></tbody>
                 </table>
             </div>
@@ -1035,7 +1035,7 @@
         <div id="tab-operators" class="tab-content">
             <div class="table-container">
                 <table class="data-table" id="operators-table">
-                    <thead><tr><th>Operador</th><th>Registros</th><th>Jobs</th><th>Quiebras</th><th>Tasa</th><th>Dispositivos</th></tr></thead>
+                    <thead><tr><th>Operador</th><th>Registros</th><th>Jobs</th><th>Dispositivos</th></tr></thead>
                     <tbody id="operators-tbody"></tbody>
                 </table>
             </div>

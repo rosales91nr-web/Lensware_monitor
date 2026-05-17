@@ -139,6 +139,7 @@ function switchTab(tabId) {
     if (tabId === 'dashboard') refreshDashboardCharts();
     if (tabId === 'devices') renderDevices();
     if (tabId === 'operators') renderOperators();
+    if (tabId === 'activity') renderActivity();
     if (tabId === 'historico' && histState.backupsByDate.length === 0) loadHistBackupDays();
 }
 
@@ -382,6 +383,21 @@ function fillSelect(id, options, placeholder) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Render Activity
 // ─────────────────────────────────────────────────────────────────────────────
+function recordTimestamp(r) {
+    const d = String(r.date_raw || '').trim();
+    const t = String(r.time_raw || '00:00:00').trim();
+    let y, mo, da;
+    let m = d.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (m) { da = +m[1]; mo = +m[2]; y = +m[3]; }
+    else if ((m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) { da = +m[1]; mo = +m[2]; y = +m[3]; }
+    else if ((m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/))) { y = +m[1]; mo = +m[2]; da = +m[3]; }
+    else if ((m = d.match(/^(\d{4})(\d{2})(\d{2})$/))) { y = +m[1]; mo = +m[2]; da = +m[3]; }
+    else return 0;
+    const tp = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    const h = tp ? +tp[1] : 0, mi = tp ? +tp[2] : 0, s = tp && tp[3] ? +tp[3] : 0;
+    return new Date(y, mo - 1, da, h, mi, s).getTime();
+}
+
 function getFilteredRecords() {
     return (appData.records || []).filter(r => {
         if (activeFilters.status && r.status !== activeFilters.status) return false;
@@ -402,7 +418,7 @@ function getFilteredRecords() {
 }
 
 function renderActivity() {
-    const filtered = getFilteredRecords();
+    const filtered = getFilteredRecords().sort((a, b) => recordTimestamp(b) - recordTimestamp(a));
     const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     if (currentPage > totalPages) currentPage = totalPages;
@@ -419,7 +435,8 @@ function renderActivity() {
             <td>${escapeHtml(r.side_label)}</td>
             <td>${escapeHtml(r.user)}</td>
             <td>${escapeHtml(r.device)}</td>
-            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.blank_desc)}">${escapeHtml(r.blank_desc || '-')}</td>
         </tr>`).join('');
     document.getElementById('page-info').textContent = `Página ${currentPage} de ${totalPages} (${formatNumber(total)} registros)`;
     document.getElementById('prev-page').disabled = currentPage === 1;
@@ -457,9 +474,7 @@ function renderBreakages() {
             <td>${escapeHtml(r.time_raw)}</td>
             <td>${escapeHtml(r.side_label)}</td>
             <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr||'-')}</td>
-            <td>${escapeHtml(r.reason||'-')}</td>
             <td>${escapeHtml(r.user)}</td>
-            <td>${escapeHtml(r.device)}</td>
             <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.lens_desc)}</td>
         </tr>`).join('');
     document.getElementById('breakages-count').textContent = formatNumber(data.length);
@@ -477,8 +492,6 @@ function renderDevices() {
             <td><strong>${escapeHtml(d.device)}</strong></td>
             <td>${formatNumber(d.total)}</td>
             <td>${formatNumber(d.jobs)}</td>
-            <td style="color:#ef4444;font-weight:600;">${formatNumber(d.brea)}</td>
-            <td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${d.rate>5?'#fef2f2':d.rate>2?'#fffbeb':'#f0fdf4'};color:${d.rate>5?'#ef4444':d.rate>2?'#f59e0b':'#059669'};">${d.rate.toFixed(1)}%</span></td>
         </tr>`).join('');
 }
 
@@ -506,8 +519,6 @@ function renderOperators() {
             <td><strong>${escapeHtml(r.user)}</strong></td>
             <td>${formatNumber(r.records)}</td>
             <td>${formatNumber(r.jobs)}</td>
-            <td style="color:#ef4444;font-weight:600;">${formatNumber(r.brea)}</td>
-            <td>${r.rate}%</td>
             <td>${r.devices}</td>
         </tr>`).join('');
 }
@@ -893,7 +904,7 @@ function renderHistContent(data) {
                 ? '<div style="background:white;border-radius:14px;padding:40px;text-align:center;color:#94a3b8;border:1px solid #e2e8f0;">Sin quiebras en este período ✅</div>'
                 : `<div class="table-container">
                     <table class="data-table">
-                        <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Código</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th></tr></thead>
+                        <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th></tr></thead>
                         <tbody>
                         ${breakages.map(r=>`
                             <tr class="breakage">
@@ -902,9 +913,7 @@ function renderHistContent(data) {
                                 <td>${escapeHtml(r.time_raw)}</td>
                                 <td>${escapeHtml(r.side_label)}</td>
                                 <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr||'-')}</td>
-                                <td>${escapeHtml(r.reason||'-')}</td>
                                 <td>${escapeHtml(r.user)}</td>
-                                <td>${escapeHtml(r.device)}</td>
                                 <td>${escapeHtml(r.lens_desc)}</td>
                             </tr>`).join('')}
                         </tbody>
