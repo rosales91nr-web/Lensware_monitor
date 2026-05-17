@@ -247,6 +247,15 @@ function normalizeRecordDate(string $dateRaw): ?string {
 }
 
 /** Extrae la hora (0-23) de la columna Time del CSV. */
+/** Texto para columna Blank description (consolida blank + columnas movidas). */
+function formatBlankDescription(array $r, bool $includeDevice = false, bool $includeCode = false): string {
+    $parts = [];
+    if (!empty(trim($r['blank_desc'] ?? ''))) $parts[] = trim($r['blank_desc']);
+    if ($includeDevice && !empty(trim($r['device'] ?? ''))) $parts[] = trim($r['device']);
+    if ($includeCode && !empty(trim($r['reason'] ?? ''))) $parts[] = 'Cód. ' . trim($r['reason']);
+    return $parts ? implode(' · ', $parts) : '';
+}
+
 function recordHour(string $timeRaw): int {
     $t = trim($timeRaw);
     if (preg_match('/^(\d{1,2}):/', $t, $m)) {

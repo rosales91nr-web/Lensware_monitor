@@ -985,12 +985,11 @@
             </div>
             <div class="filters-bar">
                 <input type="text" id="filter-job" placeholder="🔍 Buscar por Job o Causa..." class="filter-input">
-                <select id="filter-device" class="filter-select"><option value="">📟 Todos los dispositivos</option></select>
                 <select id="filter-user" class="filter-select"><option value="">👤 Todos los usuarios</option></select>
             </div>
             <div class="table-container">
                 <table class="data-table" id="breakages-table">
-                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th></tr></thead>
+                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th><th>Blank description</th></tr></thead>
                     <tbody id="breakages-tbody"></tbody>
                 </table>
             </div>
@@ -1010,7 +1009,7 @@
             </div>
             <div class="table-container">
                 <table class="data-table" id="activity-table">
-                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th><th>Blank</th></tr></thead>
+                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th><th>Blank description</th></tr></thead>
                     <tbody id="activity-tbody"></tbody>
                 </table>
             </div>

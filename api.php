@@ -336,22 +336,23 @@ try {
             fwrite($output, "\xEF\xBB\xBF");
 
             if ($type === 'breakages') {
-                fputcsv($output, ['Job', 'Fecha', 'Hora', 'OD/OI', 'Causa', 'Código', 'Usuario', 'Lente', 'Blank', 'Dispositivo']);
+                fputcsv($output, ['Job', 'Fecha', 'Hora', 'OD/OI', 'Causa', 'Usuario', 'Lente', 'Blank description']);
                 foreach ($cache['breakages'] as $b) {
                     fputcsv($output, [
                         $b['job'],        $b['date_raw'],      $b['time_raw'],
-                        $b['side_label'], $b['reason_descr'] ?? '', $b['reason']    ?? '',
-                        $b['user'] ?? '', $b['lens_desc']   ?? '', $b['blank_desc'] ?? '',
-                        $b['device'] ?? ''
+                        $b['side_label'], $b['reason_descr'] ?? '',
+                        $b['user'] ?? '', $b['lens_desc']   ?? '',
+                        formatBlankDescription($b, true, true),
                     ]);
                 }
             } else {
-                fputcsv($output, ['Job', 'Fecha', 'Hora', 'Status', 'Usuario', 'Dispositivo', 'Lado', 'Lente']);
+                fputcsv($output, ['Job', 'Fecha', 'Hora', 'Status', 'Usuario', 'Dispositivo', 'Lado', 'Lente', 'Blank description']);
                 foreach ($cache['records'] as $r) {
                     fputcsv($output, [
                         $r['job'],          $r['date_raw'],    $r['time_raw'],
                         $r['status_label'], $r['user'] ?? '',  $r['device'] ?? '',
-                        $r['side_label'],   $r['lens_desc'] ?? ''
+                        $r['side_label'],   $r['lens_desc'] ?? '',
+                        formatBlankDescription($r),
                     ]);
                 }
             }

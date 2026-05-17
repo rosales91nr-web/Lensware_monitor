@@ -79,7 +79,6 @@ function setupEventListeners() {
 
     // Filtros de breakages
     document.getElementById('filter-job')?.addEventListener('input',    () => renderBreakages());
-    document.getElementById('filter-device')?.addEventListener('change',() => renderBreakages());
     document.getElementById('filter-user')?.addEventListener('change',  () => renderBreakages());
 
     // Paginación
@@ -362,7 +361,6 @@ function populateFilters() {
     fillSelect('act-device', devices, '🖥️ Todos los dispositivos');
     fillSelect('act-user', users, '👥 Todos los usuarios');
     fillSelect('act-status', statuses.map(s=>({ value:s, label: (STATUS_LABELS[s]||s)+' ('+s+')' })), '📊 Todos los estados');
-    fillSelect('filter-device', devices, '📟 Todos los dispositivos');
     fillSelect('filter-user', users, '👤 Todos los usuarios');
 }
 
@@ -383,6 +381,23 @@ function fillSelect(id, options, placeholder) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Render Activity
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Texto unificado para columna Blank description.
+ * extras: { device, code } — datos de columnas eliminadas en quiebras.
+ */
+function formatBlankDescription(r, extras = {}) {
+    const parts = [];
+    if (r.blank_desc?.trim()) parts.push(r.blank_desc.trim());
+    if (extras.device && r.device?.trim()) parts.push(r.device.trim());
+    if (extras.code && r.reason?.trim()) parts.push(`Cód. ${r.reason.trim()}`);
+    return parts.length ? parts.join(' · ') : '-';
+}
+
+function blankDescCellHtml(r, extras = {}) {
+    const text = formatBlankDescription(r, extras);
+    return `<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(text)}">${escapeHtml(text)}</td>`;
+}
+
 function recordTimestamp(r) {
     const d = String(r.date_raw || '').trim();
     const t = String(r.time_raw || '00:00:00').trim();
@@ -411,6 +426,7 @@ function getFilteredRecords() {
                   r.user?.toLowerCase().includes(q) ||
                   r.device?.toLowerCase().includes(q) ||
                   r.lens_desc?.toLowerCase().includes(q) ||
+                  r.blank_desc?.toLowerCase().includes(q) ||
                   r.status_label?.toLowerCase().includes(q))) return false;
         }
         return true;
@@ -435,8 +451,8 @@ function renderActivity() {
             <td>${escapeHtml(r.side_label)}</td>
             <td>${escapeHtml(r.user)}</td>
             <td>${escapeHtml(r.device)}</td>
-            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
-            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.blank_desc)}">${escapeHtml(r.blank_desc || '-')}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
+            ${blankDescCellHtml(r)}
         </tr>`).join('');
     document.getElementById('page-info').textContent = `Página ${currentPage} de ${totalPages} (${formatNumber(total)} registros)`;
     document.getElementById('prev-page').disabled = currentPage === 1;
@@ -457,12 +473,11 @@ function clearActivityFilters() {
 // ─────────────────────────────────────────────────────────────────────────────
 function renderBreakages() {
     const q    = document.getElementById('filter-job')?.value.toLowerCase() || '';
-    const dev  = document.getElementById('filter-device')?.value || '';
     const usr  = document.getElementById('filter-user')?.value  || '';
     const data = (appData.breakages || []).filter(r => {
-        if (dev && r.device !== dev) return false;
-        if (usr && r.user   !== usr) return false;
-        if (q && !(r.job?.toLowerCase().includes(q) || r.reason_descr?.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q))) return false;
+        if (usr && r.user !== usr) return false;
+        const blankText = formatBlankDescription(r, { device: true, code: true }).toLowerCase();
+        if (q && !(r.job?.toLowerCase().includes(q) || r.reason_descr?.toLowerCase().includes(q) || blankText.includes(q))) return false;
         return true;
     });
     const tbody = document.getElementById('breakages-tbody');
@@ -475,7 +490,8 @@ function renderBreakages() {
             <td>${escapeHtml(r.side_label)}</td>
             <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr||'-')}</td>
             <td>${escapeHtml(r.user)}</td>
-            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.lens_desc)}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
+            ${blankDescCellHtml(r, { device: true, code: true })}
         </tr>`).join('');
     document.getElementById('breakages-count').textContent = formatNumber(data.length);
 }
@@ -505,15 +521,14 @@ function renderOperators() {
     const usersMap = {};
     records.forEach(r => {
         const u = r.user || 'Desconocido';
-        if (!usersMap[u]) usersMap[u] = { jobs:new Set(), records:0, brea:0, devices:new Set() };
+        if (!usersMap[u]) usersMap[u] = { jobs: new Set(), records: 0, devices: new Set() };
         usersMap[u].records++;
         usersMap[u].jobs.add(r.job);
-        if (r.is_breakage) usersMap[u].brea++;
         if (r.device) usersMap[u].devices.add(r.device);
     });
     const rows = Object.entries(usersMap)
-        .map(([u,d]) => ({ user:u, records:d.records, jobs:d.jobs.size, brea:d.brea, devices:d.devices.size, rate: d.jobs.size>0?(d.brea/d.jobs.size*100).toFixed(1):0 }))
-        .sort((a,b)=>b.records-a.records);
+        .map(([u, d]) => ({ user: u, records: d.records, jobs: d.jobs.size, devices: d.devices.size }))
+        .sort((a, b) => b.records - a.records);
     tbody.innerHTML = rows.map(r => `
         <tr>
             <td><strong>${escapeHtml(r.user)}</strong></td>
@@ -622,12 +637,11 @@ function showDetail(job, date, time) {
                     ${createDetailRow('Hora',record.time_raw)}
                     ${createDetailRow('Status',`${record.status} — ${record.status_label}`)}
                     ${createDetailRow('Usuario',record.user)}
-                    ${createDetailRow('Dispositivo',record.device)}
                     ${createDetailRow('Lado',record.side_label)}
                 </div>
             </div>
-            ${record.lens_desc?`<div style="background:#f8fafc;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#3b82f6;">Lente</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Lente',record.lens_desc)}${createDetailRow('Blank',record.blank_desc)}${record.index_val?createDetailRow('Índice',record.index_val.toFixed(3)):''}</div></div>`:''}
-            ${record.is_breakage&&record.reason_descr?`<div style="background:#fef2f2;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#ef4444;">⚠️ Quiebra</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Causa',record.reason_descr,false,true)}${createDetailRow('Código',record.reason,false,true)}${createDetailRow('Dep. BR/RM',record.dep)}</div></div>`:''}
+            ${(record.lens_desc || record.blank_desc || record.device || record.reason)?`<div style="background:#f8fafc;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#3b82f6;">Lente y blank</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Lente',record.lens_desc)}${createDetailRow('Blank description',formatBlankDescription(record,{device:!!record.device,code:!!record.reason}))}${record.index_val?createDetailRow('Índice',record.index_val.toFixed(3)):''}</div></div>`:''}
+            ${record.is_breakage&&record.reason_descr?`<div style="background:#fef2f2;padding:16px;border-radius:16px;"><h4 style="margin-bottom:12px;color:#ef4444;">⚠️ Quiebra</h4><div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">${createDetailRow('Causa',record.reason_descr,false,true)}${record.dep?createDetailRow('Dep. BR/RM',record.dep):''}</div></div>`:''}
         </div>`;
     modal.classList.add('active');
 }
@@ -904,7 +918,7 @@ function renderHistContent(data) {
                 ? '<div style="background:white;border-radius:14px;padding:40px;text-align:center;color:#94a3b8;border:1px solid #e2e8f0;">Sin quiebras en este período ✅</div>'
                 : `<div class="table-container">
                     <table class="data-table">
-                        <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th></tr></thead>
+                        <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th><th>Blank description</th></tr></thead>
                         <tbody>
                         ${breakages.map(r=>`
                             <tr class="breakage">
@@ -915,6 +929,7 @@ function renderHistContent(data) {
                                 <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr||'-')}</td>
                                 <td>${escapeHtml(r.user)}</td>
                                 <td>${escapeHtml(r.lens_desc)}</td>
+                                ${blankDescCellHtml(r, { device: true, code: true })}
                             </tr>`).join('')}
                         </tbody>
                     </table>
@@ -929,15 +944,13 @@ function renderHistContent(data) {
             </div>
             <div class="table-container">
                 <table class="data-table">
-                    <thead><tr><th>Dispositivo</th><th>Total Reg.</th><th>Jobs</th><th>Quiebras</th><th>Tasa</th></tr></thead>
+                    <thead><tr><th>Dispositivo</th><th>Total Reg.</th><th>Jobs</th></tr></thead>
                     <tbody>
                     ${(data.device_stats||[]).map(d=>`
                         <tr>
                             <td><strong>${escapeHtml(d.device)}</strong></td>
                             <td>${formatNumber(d.total)}</td>
                             <td>${formatNumber(d.jobs)}</td>
-                            <td style="color:#ef4444;font-weight:600;">${formatNumber(d.brea)}</td>
-                            <td><span style="padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${d.rate>5?'#fef2f2':d.rate>2?'#fffbeb':'#f0fdf4'};color:${d.rate>5?'#ef4444':d.rate>2?'#f59e0b':'#059669'};">${d.rate.toFixed(1)}%</span></td>
                         </tr>`).join('')}
                     </tbody>
                 </table>
