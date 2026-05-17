@@ -304,7 +304,7 @@ function calculateStats(array $records): array {
     $total = count($records);
     $byStatus = []; $byHour = array_fill(0, 24, 0);
     $byDevice = []; $byUser = []; $byCause = [];
-    $jobsSet = []; $jobsBrea = []; $breaDev = []; $breaUser = [];
+    $jobsSet = []; $jobsBrea = []; $breaPerJob = []; $breaDev = []; $breaUser = [];
     $eventos = 0;
 
     foreach ($records as $r) {
@@ -325,6 +325,7 @@ function calculateStats(array $records): array {
         if ($r['is_breakage']) {
             $eventos++;
             $jobsBrea[$r['job']] = true;
+            $breaPerJob[$r['job']] = ($breaPerJob[$r['job']] ?? 0) + 1;
             $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
             $byCause[$cause] = ($byCause[$cause] ?? 0) + 1;
             if ($dev !== '') $breaDev[$dev] = ($breaDev[$dev] ?? 0) + 1;
@@ -333,6 +334,12 @@ function calculateStats(array $records): array {
     }
 
     arsort($byDevice); arsort($byUser); arsort($byCause);
+    arsort($breaPerJob);
+
+    $topJobsBrea = [];
+    foreach (array_slice($breaPerJob, 0, 10, true) as $job => $count) {
+        $topJobsBrea[] = ['job' => $job, 'count' => $count];
+    }
 
     $jobsUnicos  = count($jobsSet);
     $jobsConBrea = count($jobsBrea);
@@ -353,6 +360,7 @@ function calculateStats(array $records): array {
         'brea_causa'    => $byCause,
         'brea_device'   => $breaDev,
         'brea_por_user' => $breaUser,
+        'top_jobs_brea' => $topJobsBrea,
     ];
 }
 

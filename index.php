@@ -384,6 +384,15 @@
         .chart-header h3 { font-size: 14px; font-weight: 700; color: #1e293b; }
         .chart-meta { font-size: 11px; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 20px; }
         .chart-card canvas { width: 100%; height: 260px !important; max-height: 260px !important; display: block; }
+        .chart-card-wide { grid-column: 1 / -1; }
+        .chart-card-wide canvas { height: 300px !important; max-height: 300px !important; }
+        .chart-empty {
+            text-align: center;
+            padding: 48px 20px;
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .chart-empty.hidden { display: none; }
 
         /* ========== FILTERS ========== */
         .filters-bar {
@@ -1045,6 +1054,16 @@
                 <div class="chart-card">
                     <div class="chart-header"><h3><i class="fas fa-chart-simple"></i> Top Dispositivos</h3></div>
                     <canvas id="chart-devices" height="260" style="width:100%;height:260px;"></canvas>
+                </div>
+            </div>
+            <div class="charts-row">
+                <div class="chart-card chart-card-wide">
+                    <div class="chart-header">
+                        <h3><i class="fas fa-trophy" style="color:#ef4444;"></i> Top 10 Jobs con más quiebras</h3>
+                        <span class="chart-meta" id="top-jobs-brea-meta"></span>
+                    </div>
+                    <canvas id="chart-top-jobs-brea" height="300" style="width:100%;height:300px;"></canvas>
+                    <p id="top-jobs-brea-empty" class="chart-empty hidden">Sin quiebras registradas en este período</p>
                 </div>
             </div>
         </div>

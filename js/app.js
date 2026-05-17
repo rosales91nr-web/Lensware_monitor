@@ -155,7 +155,7 @@ function switchTab(tabId) {
 }
 
 function refreshDashboardCharts() {
-    [window.statusChart, window.causesChart, window.hourChart, window.devicesChart].forEach(c => {
+    [window.statusChart, window.causesChart, window.hourChart, window.devicesChart, window.topJobsBreaChart].forEach(c => {
         if (c) { c.resize?.(); c.update?.(); }
     });
 }
@@ -294,6 +294,18 @@ function getChartOptions(type, overrides = {}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Gráficas principales (en vivo)
 // ─────────────────────────────────────────────────────────────────────────────
+function getTopJobsBrea(stats) {
+    if (stats.top_jobs_brea?.length) return stats.top_jobs_brea;
+    const counts = {};
+    (appData.breakages || []).forEach(r => {
+        if (r.job) counts[r.job] = (counts[r.job] || 0) + 1;
+    });
+    return Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([job, count]) => ({ job, count }));
+}
+
 function renderCharts(stats) {
     // Status chart
     const statusEntries = Object.entries(stats.por_status || {}).sort((a,b)=>b[1]-a[1]);
@@ -357,6 +369,56 @@ function renderCharts(stats) {
                 datasets: [{ data: devEntries.map(([,v])=>v), backgroundColor: '#8b5cf6', borderRadius: 6 }]
             },
             options: getChartOptions('bar-h'),
+        });
+    }
+
+    // Top jobs con más quiebras
+    const topJobs = getTopJobsBrea(stats);
+    const canvasTop = document.getElementById('chart-top-jobs-brea');
+    const emptyTop = document.getElementById('top-jobs-brea-meta');
+    const emptyMsg = document.getElementById('top-jobs-brea-empty');
+    if (window.topJobsBreaChart) window.topJobsBreaChart.destroy();
+    if (emptyTop) {
+        emptyTop.textContent = topJobs.length
+            ? `${topJobs.reduce((s, j) => s + j.count, 0)} quiebras en top ${topJobs.length}`
+            : '';
+    }
+    if (canvasTop) {
+        canvasTop.style.display = topJobs.length ? 'block' : 'none';
+    }
+    if (emptyMsg) {
+        emptyMsg.classList.toggle('hidden', topJobs.length > 0);
+    }
+    const ctxJ = canvasTop?.getContext('2d');
+    if (ctxJ && topJobs.length) {
+        const labels = [...topJobs].reverse().map(j => j.job);
+        const values = [...topJobs].reverse().map(j => j.count);
+        const jobChartOpts = getChartOptions('bar-h');
+        jobChartOpts.onClick = (_evt, elements) => {
+            if (!elements.length) return;
+            const job = labels[elements[0].index];
+            switchTab('search');
+            const input = document.getElementById('global-search');
+            if (input) {
+                input.value = job;
+                globalSearch(job);
+            }
+        };
+        jobChartOpts.plugins.tooltip = {
+            callbacks: { label: (ctx) => ` ${ctx.parsed.x} quiebra(s)` },
+        };
+        window.topJobsBreaChart = new Chart(ctxJ, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: '#ef4444',
+                    borderRadius: 6,
+                    barThickness: 22,
+                }],
+            },
+            options: jobChartOpts,
         });
     }
 }
