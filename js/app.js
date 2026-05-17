@@ -38,6 +38,13 @@ let histState = {
     chartDevices: null,
 };
 
+let searchState = {
+    query: '',
+    data: null,
+    allRecords: [],
+    debounceTimer: null,
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Inicialización
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,8 +92,12 @@ function setupEventListeners() {
     document.getElementById('prev-page')?.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderActivity(); } });
     document.getElementById('next-page')?.addEventListener('click', () => { currentPage++; renderActivity(); });
 
-    // Búsqueda global
-    document.getElementById('global-search')?.addEventListener('input', e => globalSearch(e.target.value.toLowerCase()));
+    // Búsqueda global (Job + backups históricos)
+    document.getElementById('global-search')?.addEventListener('input', e => {
+        const q = e.target.value.trim();
+        clearTimeout(searchState.debounceTimer);
+        searchState.debounceTimer = setTimeout(() => globalSearch(q), 450);
+    });
 
     // Cerrar modales
     document.querySelectorAll('.modal-close').forEach(btn => {
@@ -140,6 +151,7 @@ function switchTab(tabId) {
     if (tabId === 'operators') renderOperators();
     if (tabId === 'activity') renderActivity();
     if (tabId === 'historico' && histState.backupsByDate.length === 0) loadHistBackupDays();
+    if (tabId === 'search' && searchState.query) renderSearchResults();
 }
 
 function refreshDashboardCharts() {
@@ -539,31 +551,141 @@ function renderOperators() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Global search
+// Búsqueda de Job (en vivo + backups históricos)
 // ─────────────────────────────────────────────────────────────────────────────
-function globalSearch(q) {
-    const tbody = document.getElementById('search-tbody');
-    if (!tbody) return;
-    if (!q) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8;">Ingresa un término para buscar</td></tr>'; return; }
-    const filtered = (appData.records || []).filter(r =>
-        r.job?.toLowerCase().includes(q) ||
-        r.user?.toLowerCase().includes(q) ||
-        r.device?.toLowerCase().includes(q) ||
-        r.lens_desc?.toLowerCase().includes(q) ||
-        r.reason_descr?.toLowerCase().includes(q)
-    ).slice(0,200);
-    tbody.innerHTML = filtered.length ? filtered.map(r => `
-        <tr class="${r.is_breakage?'breakage':''}" onclick="showDetail('${escapeHtml(r.job)}','${escapeHtml(r.date_raw)}','${escapeHtml(r.time_raw)}')" style="cursor:pointer;">
-            <td><strong>${escapeHtml(r.job)}</strong></td>
+function showSearchStatus(type, text) {
+    const bar  = document.getElementById('search-status');
+    const icon = document.getElementById('search-status-icon');
+    const span = document.getElementById('search-status-text');
+    if (!bar) return;
+    bar.className = `search-status ${type}`;
+    span.textContent = text;
+    icon.className = type === 'loading'
+        ? 'fas fa-circle-notch fa-spin-custom'
+        : (type === 'error' ? 'fas fa-exclamation-circle' : 'fas fa-info-circle');
+}
+
+function searchRecordRowHtml(r) {
+    const src = r._source_label ? `<span style="font-size:10px;color:#64748b;display:block;margin-top:2px;">${escapeHtml(r._source_label)}</span>` : '';
+    return `
+        <tr class="${r.is_breakage ? 'breakage' : ''}" onclick="showDetail('${escapeAttr(r.job)}','${escapeAttr(r.date_raw)}','${escapeAttr(r.time_raw)}')" style="cursor:pointer;">
+            <td><strong>${escapeHtml(r.job)}</strong>${src}</td>
             <td>${escapeHtml(r.date_raw)}</td>
             <td>${escapeHtml(r.time_raw)}</td>
             <td><span class="badge-status ${r.is_breakage?'badge-brea':''}" style="${!r.is_breakage?'background:#f1f5f9;':''}">${escapeHtml(r.status_label)}</span></td>
             <td>${escapeHtml(r.side_label)}</td>
             <td>${escapeHtml(r.user)}</td>
             <td>${escapeHtml(r.device)}</td>
-            <td>${escapeHtml(r.reason_descr||r.lens_desc||'-')}</td>
-        </tr>`).join('')
-    : '<tr><td colspan="8" style="text-align:center;padding:40px;color:#94a3b8;">Sin resultados para "'+escapeHtml(q)+'"</td></tr>';
+            <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.lens_desc)}">${escapeHtml(r.lens_desc || '-')}</td>
+            ${blankDescCellHtml(r, { device: r.is_breakage, code: r.is_breakage })}
+        </tr>`;
+}
+
+function renderSearchResults() {
+    const container = document.getElementById('search-results');
+    const summary   = document.getElementById('search-job-summary');
+    if (!container) return;
+
+    const data = searchState.data;
+    if (!data || !data.sources?.length) {
+        if (summary) summary.classList.add('hidden');
+        container.innerHTML = `<p style="text-align:center;padding:48px 20px;color:#94a3b8;font-size:14px;">
+            Ingresa un número de Job para ver todo su historial en datos en vivo y en respaldos de días anteriores.
+        </p>`;
+        return;
+    }
+
+    const jobsFound = new Set();
+    data.sources.forEach(s => s.records.forEach(r => jobsFound.add(r.job)));
+
+    if (summary) {
+        summary.classList.remove('hidden');
+        summary.innerHTML = `
+            <h2><i class="fas fa-briefcase"></i> Job ${escapeHtml(data.job_query)}</h2>
+            <p>${formatNumber(data.total_records)} registro(s) en ${data.sources_count} fuente(s) de datos</p>
+            <div class="search-meta">
+                ${[...jobsFound].map(j => `<span>Job ${escapeHtml(j)}</span>`).join('')}
+                <span>${data.sources_count} período(s)</span>
+            </div>`;
+    }
+
+    const tableHead = `<thead><tr>
+        <th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th>
+        <th>Usuario</th><th>Dispositivo</th><th>Lente</th><th>Blank description</th>
+    </tr></thead>`;
+
+    container.innerHTML = data.sources.map(source => `
+        <div class="search-source-block">
+            <div class="search-source-header">
+                <h3><i class="fas fa-${source.is_live ? 'broadcast-tower' : 'archive'}"></i> ${escapeHtml(source.label)}</h3>
+                <span class="tag ${source.is_live ? 'live' : 'backup'}">${formatNumber(source.records.length)} reg.</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    ${tableHead}
+                    <tbody>${source.records.map(r => searchRecordRowHtml(r)).join('')}</tbody>
+                </table>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function globalSearch(q) {
+    searchState.query = q;
+    const container = document.getElementById('search-results');
+    const summary   = document.getElementById('search-job-summary');
+
+    if (!q || q.length < 2) {
+        searchState.data = null;
+        searchState.allRecords = [];
+        const statusBar = document.getElementById('search-status');
+        if (statusBar) statusBar.classList.add('hidden');
+        if (summary) summary.classList.add('hidden');
+        if (container) {
+            container.innerHTML = `<p style="text-align:center;padding:48px 20px;color:#94a3b8;font-size:14px;">
+                Ingresa al menos 2 caracteres del número de Job.
+            </p>`;
+        }
+        return;
+    }
+
+    showSearchStatus('loading', `Buscando Job «${q}» en datos en vivo y backups históricos...`);
+    document.getElementById('search-status')?.classList.remove('hidden');
+
+    try {
+        const r = await fetch(`api.php?action=search_job&job=${encodeURIComponent(q)}`);
+        const result = await r.json();
+
+        if (!result.success) {
+            searchState.data = result.data || null;
+            searchState.allRecords = [];
+            showSearchStatus('error', result.error || 'Sin resultados');
+            if (summary) summary.classList.add('hidden');
+            if (container) {
+                container.innerHTML = `<p style="text-align:center;padding:48px 20px;color:#94a3b8;">${escapeHtml(result.error || 'No se encontraron registros.')}</p>`;
+            }
+            return;
+        }
+
+        searchState.data = result.data;
+        searchState.allRecords = [];
+        result.data.sources.forEach(source => {
+            source.records.forEach(r => {
+                searchState.allRecords.push({
+                    ...r,
+                    _source_label: source.label,
+                    _source_id: source.id,
+                    _is_live: source.is_live,
+                });
+            });
+        });
+
+        showSearchStatus('ok', `✅ ${formatNumber(result.data.total_records)} registros en ${result.data.sources_count} fuente(s)`);
+        renderSearchResults();
+    } catch (e) {
+        showSearchStatus('error', `Error: ${e.message}`);
+        if (container) container.innerHTML = `<p style="text-align:center;padding:40px;color:#ef4444;">Error de conexión</p>`;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -622,8 +744,9 @@ async function showDeviceDetail(deviceName) {
 // Show detail modal
 // ─────────────────────────────────────────────────────────────────────────────
 function showDetail(job, date, time) {
-    const breaRecord = (appData.breakages||[]).find(r=>r.job===job&&r.date_raw===date&&r.time_raw===time);
-    const allMatches = (appData.records||[]).filter(r=>r.job===job&&r.date_raw===date&&r.time_raw===time);
+    const pool = [...(appData.records || []), ...(searchState.allRecords || [])];
+    const breaRecord = pool.find(r => r.job === job && r.date_raw === date && r.time_raw === time && r.is_breakage);
+    const allMatches = pool.filter(r => r.job === job && r.date_raw === date && r.time_raw === time);
     const record = breaRecord || allMatches.find(r=>r.is_breakage) || allMatches[0];
     if (!record) return;
     const modal = document.getElementById('modal-detail');

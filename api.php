@@ -361,6 +361,25 @@ try {
             exit;
 
         // ------------------------------------------------------------------ //
+        // Busca un Job en datos en vivo y en backups de días anteriores.
+        // GET api.php?action=search_job&job=267936
+        // ------------------------------------------------------------------ //
+        case 'search_job':
+            $job = trim($_GET['job'] ?? '');
+            if (strlen($job) < 2) {
+                respondJson(['success' => false, 'error' => 'Ingresa al menos 2 dígitos del Job'], 400);
+            }
+            $result = searchJobHistory($job);
+            if ($result['total_records'] === 0) {
+                respondJson([
+                    'success' => false,
+                    'error'   => "No se encontró el Job «{$job}» en datos en vivo ni en backups históricos.",
+                    'data'    => $result,
+                ], 404);
+            }
+            respondJson(['success' => true, 'data' => $result]);
+
+        // ------------------------------------------------------------------ //
         default:
             respondJson(['success' => false, 'error' => 'Acción no válida: ' . htmlspecialchars($action)], 400);
     }

@@ -577,6 +577,78 @@
         }
         .search-input:focus { outline: none; border-color: #3b82f6; }
 
+        .search-status {
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .search-status.hidden { display: none; }
+        .search-status.loading { background: #eff6ff; color: #1d4ed8; }
+        .search-status.ok { background: #f0fdf4; color: #166534; }
+        .search-status.empty { background: #f8fafc; color: #64748b; }
+        .search-status.error { background: #fef2f2; color: #991b1b; }
+
+        .search-job-summary {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            color: white;
+        }
+        .search-job-summary.hidden { display: none; }
+        .search-job-summary h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+        .search-job-summary p { font-size: 13px; color: #94a3b8; }
+        .search-job-summary .search-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 14px;
+        }
+        .search-job-summary .search-meta span {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .search-source-block {
+            margin-bottom: 24px;
+        }
+        .search-source-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .search-source-header h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-source-header .tag {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #f1f5f9;
+            color: #475569;
+        }
+        .search-source-header .tag.live { background: #dbeafe; color: #1d4ed8; }
+        .search-source-header .tag.backup { background: #fef3c7; color: #b45309; }
+
         /* ========== UPLOAD ========== */
         .upload-container {
             max-width: 680px;
@@ -1044,13 +1116,17 @@
         <div id="tab-search" class="tab-content">
             <div class="search-bar">
                 <i class="fas fa-search"></i>
-                <input type="text" id="global-search" placeholder="Buscar en Job, Usuario, Lente, Dispositivo, Causa..." class="search-input">
+                <input type="text" id="global-search" placeholder="Buscar por número de Job (incluye backups de días anteriores)..." class="search-input">
             </div>
-            <div class="table-container">
-                <table class="data-table" id="search-table">
-                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Info</th></tr></thead>
-                    <tbody id="search-tbody"></tbody>
-                </table>
+            <div id="search-status" class="search-status hidden">
+                <i class="fas fa-circle-notch fa-spin-custom" id="search-status-icon"></i>
+                <span id="search-status-text"></span>
+            </div>
+            <div id="search-job-summary" class="search-job-summary hidden"></div>
+            <div id="search-results">
+                <p style="text-align:center;padding:48px 20px;color:#94a3b8;font-size:14px;">
+                    Ingresa un número de Job para ver todo su historial en datos en vivo y en respaldos de días anteriores.
+                </p>
             </div>
         </div>
 

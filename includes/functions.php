@@ -491,6 +491,167 @@ function listBackups(): array {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Búsqueda de Job en vivo + backups históricos (un backup oficial por día)
+// ─────────────────────────────────────────────────────────────────────────────
+function recordSortKey(array $r): int {
+    $d = normalizeRecordDate($r['date_raw'] ?? '') ?? '1970-01-01';
+    $t = trim($r['time_raw'] ?? '00:00:00');
+    if (preg_match('/^(\d{1,2}):(\d{2})/', $t, $m)) {
+        return (int) strtotime("{$d} {$m[1]}:{$m[2]}:00");
+    }
+    return (int) strtotime($d);
+}
+
+function recordSignature(array $r): string {
+    return implode('|', [
+        $r['job'] ?? '',
+        $r['date_raw'] ?? '',
+        $r['time_raw'] ?? '',
+        $r['status'] ?? '',
+    ]);
+}
+
+function filterRecordsByJob(array $records, string $jobQuery): array {
+    $q = trim($jobQuery);
+    if ($q === '') return [];
+    return array_values(array_filter($records, function ($r) use ($q) {
+        $job = (string)($r['job'] ?? '');
+        return $job === $q || stripos($job, $q) !== false;
+    }));
+}
+
+function sortRecordsNewestFirst(array $records): array {
+    usort($records, fn($a, $b) => recordSortKey($b) <=> recordSortKey($a));
+    return $records;
+}
+
+/** Lista de backups oficiales por día para búsqueda (excluye hoy: se usa caché en vivo). */
+function getHistoricalBackupsForSearch(): array {
+    $all = listBackups();
+    $byDate = [];
+    foreach ($all as $b) {
+        $name = $b['filename'];
+        if (preg_match('/BACKUP_(\d{4})(\d{2})(\d{2})_/', $name, $m)) {
+            $dateKey = "{$m[1]}-{$m[2]}-{$m[3]}";
+        } else {
+            $dateKey = substr($b['modified'], 0, 10);
+        }
+        $byDate[$dateKey][] = $b;
+    }
+    krsort($byDate);
+
+    $today = (new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica')))->format('Y-m-d');
+    $out   = [];
+
+    foreach ($byDate as $date => $backups) {
+        if ($date === $today) {
+            continue;
+        }
+        $daily = null;
+        foreach ($backups as $b) {
+            if (str_contains($b['filename'], '_2359_')) {
+                $daily = $b;
+                break;
+            }
+        }
+        $chosen = $daily ?? $backups[0];
+        $out[]  = [
+            'date'     => $date,
+            'label'    => date('d/m/Y', strtotime($date)),
+            'filename' => $chosen['filename'],
+            'is_daily' => $daily !== null,
+        ];
+    }
+
+    return $out;
+}
+
+function collectLiveRecordsForSearch(): array {
+    $cache = readCache();
+    if ($cache && !empty($cache['records'])) {
+        return $cache['records'];
+    }
+    $latest = findLatestCSV();
+    if (!$latest) {
+        return [];
+    }
+    $data = processCSV($latest);
+    return $data['records'] ?? [];
+}
+
+function searchJobHistory(string $jobQuery): array {
+    $jobQuery = trim($jobQuery);
+    $seen     = [];
+    $sources  = [];
+    $total    = 0;
+
+    // 1) Datos en vivo / caché actual
+    $liveRecords = sortRecordsNewestFirst(filterRecordsByJob(collectLiveRecordsForSearch(), $jobQuery));
+    if (!empty($liveRecords)) {
+        foreach ($liveRecords as $r) {
+            $seen[recordSignature($r)] = true;
+        }
+        $sources[] = [
+            'id'       => 'live',
+            'label'    => 'En vivo (datos actuales)',
+            'date'     => (new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica')))->format('Y-m-d'),
+            'filename' => null,
+            'is_live'  => true,
+            'records'  => $liveRecords,
+        ];
+        $total += count($liveRecords);
+    }
+
+    // 2) Backups históricos (un archivo por día)
+    foreach (getHistoricalBackupsForSearch() as $meta) {
+        $path = BACKUP_FOLDER . '/' . $meta['filename'];
+        if (!file_exists($path)) {
+            continue;
+        }
+
+        $data    = processCSV($path);
+        $matches = $data ? filterRecordsByJob($data['records'] ?? [], $jobQuery) : [];
+        if (empty($matches)) {
+            continue;
+        }
+
+        $unique = [];
+        foreach ($matches as $r) {
+            $sig = recordSignature($r);
+            if (isset($seen[$sig])) {
+                continue;
+            }
+            $seen[$sig] = true;
+            $unique[]   = $r;
+        }
+
+        if (empty($unique)) {
+            continue;
+        }
+
+        $unique = sortRecordsNewestFirst($unique);
+        $label  = $meta['label'] . ($meta['is_daily'] ? ' · backup diario 23:59' : ' · backup');
+
+        $sources[] = [
+            'id'       => 'backup_' . $meta['date'],
+            'label'    => $label,
+            'date'     => $meta['date'],
+            'filename' => $meta['filename'],
+            'is_live'  => false,
+            'records'  => $unique,
+        ];
+        $total += count($unique);
+    }
+
+    return [
+        'job_query'       => $jobQuery,
+        'sources'         => $sources,
+        'total_records'   => $total,
+        'sources_count'   => count($sources),
+    ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // cleanupOldBackups:
 // - Conserva TODOS los backups _2359_ (uno por día = el oficial)
 // - Borra todos los intermedios (sin _2359_ en el nombre)
