@@ -8,11 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -21,12 +17,10 @@
             overflow-x: hidden;
         }
 
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 10px; }
         ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
 
-        /* Layout */
         .app-container { display: flex; min-height: 100vh; }
 
         /* ========== SIDEBAR ========== */
@@ -39,7 +33,6 @@
             flex-direction: column;
             z-index: 100;
         }
-
         .logo {
             padding: 24px 20px;
             border-bottom: 1px solid #1e293b;
@@ -49,16 +42,10 @@
         }
         .logo i { font-size: 28px; color: #3b82f6; }
         .logo span { font-size: 18px; font-weight: 700; color: white; }
-        .logo .pro {
-            background: #3b82f6;
-            padding: 2px 8px;
-            border-radius: 20px;
-            font-size: 10px;
-            margin-left: 6px;
-        }
+        .logo .pro { background: #3b82f6; padding: 2px 8px; border-radius: 20px; font-size: 10px; margin-left: 6px; }
         .logo small { font-size: 9px; color: #64748b; margin-left: auto; }
 
-        .nav-menu { flex: 1; padding: 20px 12px; }
+        .nav-menu { flex: 1; padding: 20px 12px; overflow-y: auto; }
         .nav-item {
             display: flex;
             align-items: center;
@@ -82,6 +69,14 @@
             padding: 2px 7px;
             border-radius: 20px;
             margin-left: auto;
+        }
+        .nav-section-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #475569;
+            letter-spacing: 1px;
+            padding: 12px 14px 6px;
         }
 
         .sidebar-footer { padding: 16px; border-top: 1px solid #1e293b; }
@@ -118,14 +113,8 @@
         .btn-refresh:hover { background: #2563eb; }
 
         /* ========== MAIN CONTENT ========== */
-        .main-content {
-            flex: 1;
-            margin-left: 260px;
-            padding: 20px 28px;
-            min-height: 100vh;
-        }
+        .main-content { flex: 1; margin-left: 260px; padding: 20px 28px; min-height: 100vh; }
 
-        /* Top Bar */
         .top-bar {
             background: white;
             border-radius: 16px;
@@ -139,13 +128,7 @@
         .page-title h1 { font-size: 22px; font-weight: 700; color: #0f172a; }
         .page-title p { font-size: 12px; color: #64748b; margin-top: 4px; }
         .top-actions { display: flex; align-items: center; gap: 12px; }
-        .last-update {
-            background: #f1f5f9;
-            padding: 8px 16px;
-            border-radius: 30px;
-            font-size: 12px;
-            color: #475569;
-        }
+        .last-update { background: #f1f5f9; padding: 8px 16px; border-radius: 30px; font-size: 12px; color: #475569; }
         .btn-icon {
             background: #f1f5f9;
             border: none;
@@ -171,7 +154,7 @@
             margin-bottom: 28px;
         }
         @media (max-width: 1400px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
-        @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 900px)  { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 
         .kpi-card {
             background: white;
@@ -185,7 +168,6 @@
             transition: all 0.2s;
         }
         .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px -12px rgba(0,0,0,0.15); }
-        
         .kpi-icon {
             width: 52px;
             height: 52px;
@@ -194,18 +176,16 @@
             align-items: center;
             justify-content: center;
             font-size: 24px;
+            flex-shrink: 0;
         }
-        .kpi-icon.blue { background: #eff6ff; color: #3b82f6; }
-        .kpi-icon.teal { background: #ecfdf5; color: #10b981; }
-        .kpi-icon.red { background: #fef2f2; color: #ef4444; }
+        .kpi-icon.blue   { background: #eff6ff; color: #3b82f6; }
+        .kpi-icon.teal   { background: #ecfdf5; color: #10b981; }
+        .kpi-icon.red    { background: #fef2f2; color: #ef4444; }
         .kpi-icon.orange { background: #fffbeb; color: #f59e0b; }
-        .kpi-icon.green { background: #ecfdf5; color: #059669; }
+        .kpi-icon.green  { background: #ecfdf5; color: #059669; }
         .kpi-icon.purple { background: #f5f3ff; color: #8b5cf6; }
-        .kpi-icon.indigo { background: #eef2ff; color: #6366f1; }
-        .kpi-icon.pink { background: #fdf2f8; color: #ec4899; }
-
         .kpi-info h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; color: #64748b; margin-bottom: 6px; letter-spacing: 0.5px; }
-        .kpi-info p { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1; }
+        .kpi-info p  { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1; }
 
         /* ========== CHARTS ========== */
         .charts-row {
@@ -222,7 +202,6 @@
             padding: 18px;
             box-shadow: 0 1px 2px rgba(0,0,0,0.03);
             border: 1px solid #e2e8f0;
-            min-height: auto;
         }
         .chart-header {
             display: flex;
@@ -235,49 +214,6 @@
         .chart-header h3 { font-size: 14px; font-weight: 700; color: #1e293b; }
         .chart-meta { font-size: 11px; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 20px; }
         .chart-card canvas { width: 100%; height: 260px !important; max-height: 260px !important; display: block; }
-
-        /* ========== INFO ROW (GAUGE + TOP LIST) ========== */
-        .info-row {
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            gap: 24px;
-            margin-top: 8px;
-        }
-        @media (max-width: 800px) { .info-row { grid-template-columns: 1fr; } }
-
-        .gauge-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            text-align: center;
-            border: 1px solid #e2e8f0;
-        }
-        .gauge-container svg { width: 160px; height: auto; margin-bottom: 8px; }
-        .gauge-stats { display: flex; justify-content: center; gap: 24px; margin-top: 12px; }
-        .stat-label { font-size: 11px; color: #64748b; display: block; margin-bottom: 4px; }
-        .stat-value { font-size: 22px; font-weight: 800; color: #0f172a; }
-
-        .top-list-card {
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            border: 1px solid #e2e8f0;
-        }
-        .top-list-card h3 { font-size: 14px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-        .top-list { display: flex; flex-direction: column; gap: 12px; }
-        .top-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 6px 0;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .top-item:hover { background: #f8fafc; padding-left: 8px; border-radius: 8px; }
-        .top-name { font-weight: 600; font-size: 13px; width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .top-bar-progress { flex: 1; height: 6px; background: #e2e8f0; border-radius: 10px; overflow: hidden; }
-        .top-bar-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); border-radius: 10px; transition: width 0.3s; }
-        .top-value { font-weight: 700; font-size: 13px; color: #475569; min-width: 50px; text-align: right; }
 
         /* ========== FILTERS ========== */
         .filters-bar {
@@ -359,37 +295,48 @@
         .data-table td { padding: 10px 16px; border-bottom: 1px solid #f1f5f9; }
         .data-table tr:hover td { background: #f8fafc; }
         .data-table tr.breakage td { background: #fef2f2; }
-        
+
         .badge-status {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 30px;
+            padding: 3px 10px;
+            border-radius: 20px;
             font-size: 11px;
             font-weight: 600;
         }
+        .badge-brea { background: #fef2f2; color: #ef4444; border: 1px solid #fca5a5; }
 
-        /* Pagination */
+        .table-footer {
+            padding: 12px 20px;
+            font-size: 12px;
+            color: #64748b;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            border-radius: 0 0 14px 14px;
+        }
         .pagination {
             display: flex;
-            justify-content: center;
             align-items: center;
-            gap: 16px;
-            margin-top: 24px;
+            gap: 12px;
+            padding: 14px 20px;
+            background: white;
+            border-radius: 0 0 14px 14px;
+            border-top: 1px solid #e2e8f0;
         }
         .pagination button {
-            padding: 8px 18px;
-            background: white;
+            padding: 6px 16px;
             border: 1px solid #e2e8f0;
-            border-radius: 10px;
+            border-radius: 8px;
+            background: white;
             cursor: pointer;
-            font-weight: 500;
             font-size: 12px;
+            font-weight: 600;
             transition: all 0.2s;
         }
         .pagination button:hover:not(:disabled) { background: #3b82f6; color: white; border-color: #3b82f6; }
-        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pagination span { font-size: 12px; color: #64748b; }
 
-        /* Breakages Header */
+        /* ========== BREAKAGES ========== */
         .breakages-header {
             display: flex;
             justify-content: space-between;
@@ -397,542 +344,763 @@
             margin-bottom: 20px;
         }
         .breakages-header h2 { font-size: 18px; font-weight: 700; }
-        .table-footer {
-            padding: 12px 16px;
-            background: #f8fafc;
-            border-top: 1px solid #e2e8f0;
-            font-size: 12px;
-            color: #475569;
-        }
 
-        /* Search Bar */
-        .search-bar {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            background: white;
-            padding: 12px 24px;
-            border-radius: 50px;
-            margin-bottom: 24px;
-            border: 1px solid #e2e8f0;
-            transition: all 0.2s;
-        }
-        .search-bar:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-        .search-bar i { color: #94a3b8; font-size: 18px; }
-        .search-input {
-            flex: 1;
-            border: none;
-            font-size: 14px;
-            padding: 8px 0;
-            background: transparent;
-        }
-        .search-input:focus { outline: none; }
-
-        /* Modals */
+        /* ========== MODALS ========== */
         .modal {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            inset: 0;
             background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(4px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
+            padding: 20px;
         }
         .modal.active { display: flex; }
         .modal-content {
             background: white;
             border-radius: 20px;
-            width: 90%;
-            max-width: 520px;
+            width: 100%;
+            max-width: 600px;
             max-height: 85vh;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
-        .modal-large { max-width: 880px; }
+        .modal-large { max-width: 900px; }
         .modal-header {
-            padding: 18px 22px;
+            padding: 20px 24px;
             border-bottom: 1px solid #e2e8f0;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: #f8fafc;
         }
-        .modal-header h2 { font-size: 16px; font-weight: 700; }
+        .modal-header h2 { font-size: 18px; font-weight: 700; }
         .modal-close {
-            background: none;
+            background: #f1f5f9;
             border: none;
-            font-size: 24px;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
             cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-close:hover { background: #e2e8f0; }
+        .modal-body { padding: 24px; overflow-y: auto; }
+
+        /* ========== SEARCH ========== */
+        .search-bar {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        .search-bar i { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+        .search-input {
+            width: 100%;
+            padding: 14px 16px 14px 44px;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            font-size: 14px;
+            background: white;
+        }
+        .search-input:focus { outline: none; border-color: #3b82f6; }
+
+        /* ========== UPLOAD ========== */
+        .upload-container {
+            max-width: 680px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .upload-zone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 20px;
+            padding: 48px 32px;
+            text-align: center;
+            transition: all 0.2s;
+            background: white;
+            cursor: pointer;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .upload-zone i { font-size: 48px; color: #94a3b8; margin-bottom: 16px; display: block; }
+        .upload-zone h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .upload-zone p { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+        .upload-zone input[type="file"] { display: none; }
+        .upload-filename {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            background: #ecfdf5;
+            padding: 12px 20px;
+            border-radius: 14px;
+            font-size: 13px;
+            color: #166534;
+            font-weight: 600;
+        }
+        .upload-filename.visible { display: flex; }
+        .upload-progress {
+            display: none;
+            background: #f1f5f9;
+            border-radius: 10px;
+            height: 8px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .upload-progress.visible { display: block; }
+        .upload-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            border-radius: 10px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .upload-result {
+            display: none;
+            padding: 16px 20px;
+            border-radius: 14px;
+            font-size: 13px;
+            font-weight: 600;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .upload-result.visible { display: flex; }
+        .upload-result.success { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+        .upload-result.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+        .btn-upload-send {
+            padding: 14px 28px;
+            background: #3b82f6;
+            border: none;
+            border-radius: 14px;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .btn-upload-send:hover:not(:disabled) { background: #2563eb; }
+        .btn-upload-send:disabled { opacity: 0.5; cursor: not-allowed; }
+        .upload-info-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 20px;
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.8;
+        }
+        .upload-info-box h4 { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+        .upload-info-box code {
+            background: #e2e8f0;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #1e293b;
+        }
+
+        /* ========== HISTÓRICO TAB ========== */
+        .hist-panel {
+            background: white;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+        }
+        .hist-panel h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .hist-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            align-items: flex-end;
+        }
+        .hist-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .hist-field label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #64748b;
+            letter-spacing: 0.5px;
+        }
+        .hist-field select,
+        .hist-field input[type="date"],
+        .hist-field input[type="number"] {
+            padding: 9px 14px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 13px;
+            background: white;
+            font-family: inherit;
+            min-width: 160px;
+        }
+        .hist-field select:focus,
+        .hist-field input:focus { outline: none; border-color: #3b82f6; }
+        .hist-hour-range {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .hist-hour-range input { min-width: 80px; width: 80px; }
+        .hist-hour-range span { font-size: 12px; color: #64748b; font-weight: 600; }
+        .btn-hist-load {
+            padding: 9px 22px;
+            background: #3b82f6;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            height: fit-content;
+        }
+        .btn-hist-load:hover:not(:disabled) { background: #2563eb; }
+        .btn-hist-load:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-hist-reset {
+            padding: 9px 16px;
+            background: #f1f5f9;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
+            height: fit-content;
+        }
+        .btn-hist-reset:hover { background: #e2e8f0; }
+
+        .hist-status-bar {
+            margin-top: 14px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .hist-status-bar.loading { background: #eff6ff; color: #1d4ed8; }
+        .hist-status-bar.loaded  { background: #f0fdf4; color: #166534; }
+        .hist-status-bar.error   { background: #fef2f2; color: #991b1b; }
+        .hist-status-bar.hidden  { display: none; }
+
+        .hist-viewing-banner {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 14px;
+            padding: 14px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        .hist-viewing-banner.hidden { display: none; }
+        .hist-banner-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .hist-banner-info i { font-size: 20px; color: #f59e0b; }
+        .hist-banner-text h4 { font-size: 13px; font-weight: 700; color: white; }
+        .hist-banner-text p  { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+        .btn-hist-close {
+            padding: 7px 16px;
+            background: #ef4444;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .btn-hist-close:hover { background: #dc2626; }
+
+        /* KPI mini para histórico */
+        .hist-kpi-row {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1200px) { .hist-kpi-row { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 700px)  { .hist-kpi-row { grid-template-columns: repeat(2, 1fr); } }
+
+        .hist-kpi-card {
+            background: white;
+            border-radius: 14px;
+            padding: 14px 16px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        .hist-kpi-card h4 { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .hist-kpi-card p  { font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1; }
+        .hist-kpi-card.red p { color: #ef4444; }
+
+        .hist-charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 900px) { .hist-charts-row { grid-template-columns: 1fr; } }
+
+        .hist-empty {
+            text-align: center;
+            padding: 80px 20px;
             color: #94a3b8;
         }
-        .modal-close:hover { color: #ef4444; }
-        .modal-body { padding: 20px; overflow-y: auto; max-height: 65vh; }
+        .hist-empty i { font-size: 56px; margin-bottom: 16px; display: block; }
+        .hist-empty h3 { font-size: 18px; font-weight: 700; color: #475569; margin-bottom: 8px; }
+        .hist-empty p  { font-size: 13px; }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar { width: 70px; }
-            .sidebar span, .sidebar .badge, .sidebar-footer span, .logo span { display: none; }
-            .main-content { margin-left: 70px; padding: 16px; }
-            .kpi-grid { gap: 12px; }
-            .charts-row { gap: 16px; }
-            .chart-card canvas { width: 100%; height: 220px !important; max-height: 220px !important; }
+        /* Spinner */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fa-spin-custom { animation: spin 0.8s linear infinite; }
+        
+        /* Backup day card list */
+        .day-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
         }
-
-        /* Mejoras para gráficos */
-canvas {
-    filter: contrast(1.05) saturate(1.1);
-}
-
-.chart-card canvas {
-    display: block;
-    transition: all 0.3s ease;
-}
-
-/* Colores más vibrantes para badges */
-.badge-status {
-    font-weight: 600;
-    letter-spacing: 0.3px;
-}
-
-/* Mejora del gauge */
-#gauge-arc {
-    filter: drop-shadow(0 2px 4px rgba(16,185,129,0.3));
-    transition: stroke-dashoffset 0.5s ease;
-}
-
-/* Mejora de barras de progreso */
-.top-bar-fill {
-    background: linear-gradient(90deg, #3B82F6, #8B5CF6, #3B82F6);
-    background-size: 200% 100%;
-    animation: shimmer 2s ease infinite;
-}
-
-@keyframes shimmer {
-    0% { background-position: 0% 0%; }
-    100% { background-position: 200% 0%; }
-}
-
-/* ========== UPLOAD TAB ========== */
-.upload-container {
-    max-width: 680px;
-    margin: 0 auto;
-}
-.upload-zone {
-    border: 2px dashed #cbd5e1;
-    border-radius: 20px;
-    padding: 60px 40px;
-    text-align: center;
-    background: white;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin-bottom: 24px;
-}
-.upload-zone:hover, .upload-zone.dragover {
-    border-color: #3b82f6;
-    background: #eff6ff;
-}
-.upload-zone i { font-size: 52px; color: #cbd5e1; margin-bottom: 16px; display: block; transition: color 0.2s; }
-.upload-zone:hover i, .upload-zone.dragover i { color: #3b82f6; }
-.upload-zone h3 { font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
-.upload-zone p { font-size: 13px; color: #64748b; margin-bottom: 20px; }
-.upload-zone .btn-primary { display: inline-flex; align-items: center; gap: 8px; }
-.upload-zone input[type=file] { display: none; }
-.upload-filename {
-    display: none;
-    background: #f0fdf4;
-    border: 1px solid #86efac;
-    border-radius: 12px;
-    padding: 12px 20px;
-    font-size: 13px;
-    color: #166534;
-    margin-bottom: 16px;
-    align-items: center;
-    gap: 10px;
-}
-.upload-filename.visible { display: flex; }
-.btn-upload-send {
-    width: 100%;
-    padding: 14px;
-    background: #3b82f6;
-    border: none;
-    border-radius: 14px;
-    color: white;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all 0.2s;
-    margin-bottom: 16px;
-}
-.btn-upload-send:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
-.btn-upload-send:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-.upload-progress {
-    display: none;
-    background: #f1f5f9;
-    border-radius: 10px;
-    height: 8px;
-    overflow: hidden;
-    margin-bottom: 12px;
-}
-.upload-progress.visible { display: block; }
-.upload-progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-    border-radius: 10px;
-    width: 0%;
-    transition: width 0.3s;
-    animation: shimmer 1.5s infinite;
-}
-.upload-result {
-    display: none;
-    padding: 16px 20px;
-    border-radius: 14px;
-    font-size: 13px;
-    font-weight: 600;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 16px;
-}
-.upload-result.visible { display: flex; }
-.upload-result.success { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
-.upload-result.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
-.upload-info-box {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 20px;
-    font-size: 13px;
-    color: #475569;
-    line-height: 1.8;
-}
-.upload-info-box h4 { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
-.upload-info-box code {
-    background: #e2e8f0;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-family: monospace;
-    font-size: 12px;
-    color: #1e293b;
-}
+        .day-chip {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.15s;
+            background: #f1f5f9;
+            color: #475569;
+        }
+        .day-chip:hover { background: #e2e8f0; }
+        .day-chip.today { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        .day-chip.selected { background: #3b82f6; color: white; border-color: #3b82f6; }
+        .day-chip.daily   { position: relative; }
+        .day-chip.daily::after {
+            content: '✓';
+            font-size: 9px;
+            position: absolute;
+            top: -3px;
+            right: -3px;
+            background: #10b981;
+            color: white;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="logo">
-                <i class="fas fa-glasses"></i>
-                <span>LENSWARE<span class="pro">PRO</span></span>
-                <small>v9.0</small>
+<div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="logo">
+            <i class="fas fa-glasses"></i>
+            <span>LENSWARE<span class="pro">PRO</span></span>
+            <small>v9.1</small>
+        </div>
+        <nav class="nav-menu">
+            <div class="nav-section-label">En Vivo</div>
+            <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></a>
+            <a href="#" class="nav-item" data-tab="breakages"><i class="fas fa-bug"></i><span>Quiebras</span><span class="badge" id="brea-badge">0</span></a>
+            <a href="#" class="nav-item" data-tab="activity"><i class="fas fa-history"></i><span>Actividad</span></a>
+            <a href="#" class="nav-item" data-tab="devices"><i class="fas fa-microchip"></i><span>Dispositivos</span></a>
+            <a href="#" class="nav-item" data-tab="operators"><i class="fas fa-users"></i><span>Operadores</span></a>
+            <a href="#" class="nav-item" data-tab="search"><i class="fas fa-search"></i><span>Buscar</span></a>
+            <div class="nav-section-label" style="margin-top:8px;">Análisis</div>
+            <a href="#" class="nav-item" data-tab="historico"><i class="fas fa-calendar-alt"></i><span>Histórico</span></a>
+            <a href="#" class="nav-item" data-tab="upload"><i class="fas fa-upload"></i><span>Importar CSV</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="monitor-status" id="monitor-status">
+                <i class="fas fa-circle" id="status-dot"></i>
+                <span id="status-text">Conectando...</span>
             </div>
-            <nav class="nav-menu">
-                <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></a>
-                <a href="#" class="nav-item" data-tab="breakages"><i class="fas fa-bug"></i><span>Quiebras</span><span class="badge" id="brea-badge">0</span></a>
-                <a href="#" class="nav-item" data-tab="activity"><i class="fas fa-history"></i><span>Actividad</span></a>
-                <a href="#" class="nav-item" data-tab="devices"><i class="fas fa-microchip"></i><span>Dispositivos</span></a>
-                <a href="#" class="nav-item" data-tab="operators"><i class="fas fa-users"></i><span>Operadores</span></a>
-                <a href="#" class="nav-item" data-tab="search"><i class="fas fa-search"></i><span>Buscar</span></a>
-                <a href="#" class="nav-item" data-tab="upload"><i class="fas fa-upload"></i><span>Importar CSV</span></a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="monitor-status" id="monitor-status">
-                    <i class="fas fa-circle" id="status-dot"></i>
-                    <span id="status-text">Conectando...</span>
+            <button class="btn-refresh" id="btn-refresh">
+                <i class="fas fa-sync-alt"></i>
+                <span>Actualizar</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="page-title">
+                <h1 id="page-title">Dashboard</h1>
+                <p id="file-info">Cargando datos...</p>
+                <p id="backup-folder" style="font-size:11px;color:#94a3b8;margin-top:2px;">Carpeta de respaldos: cargando...</p>
+            </div>
+            <div class="top-actions">
+                <div class="last-update"><i class="far fa-clock"></i> <span id="last-update">--:--:--</span></div>
+                <button class="btn-icon" id="btn-export" title="Exportar actividad"><i class="fas fa-download"></i></button>
+                <button class="btn-icon" id="btn-backups" title="Respaldos"><i class="fas fa-archive"></i></button>
+            </div>
+        </header>
+
+        <!-- =================== DASHBOARD TAB =================== -->
+        <div id="tab-dashboard" class="tab-content active">
+            <div class="kpi-grid">
+                <div class="kpi-card"><div class="kpi-icon blue"><i class="fas fa-database"></i></div><div class="kpi-info"><h3>Total Registros</h3><p id="kpi-total">0</p></div></div>
+                <div class="kpi-card"><div class="kpi-icon teal"><i class="fas fa-briefcase"></i></div><div class="kpi-info"><h3>Jobs Únicos</h3><p id="kpi-jobs">0</p></div></div>
+                <div class="kpi-card"><div class="kpi-icon red"><i class="fas fa-exclamation-triangle"></i></div><div class="kpi-info"><h3>Jobs c/Quiebra</h3><p id="kpi-brea">0</p></div></div>
+                <div class="kpi-card"><div class="kpi-icon orange"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><h3>Tasa Quiebra</h3><p id="kpi-rate">0%</p></div></div>
+                <div class="kpi-card"><div class="kpi-icon green"><i class="fas fa-user-check"></i></div><div class="kpi-info"><h3>Operadores</h3><p id="kpi-users">0</p></div></div>
+                <div class="kpi-card"><div class="kpi-icon purple"><i class="fas fa-microchip"></i></div><div class="kpi-info"><h3>Dispositivos</h3><p id="kpi-devices">0</p></div></div>
+            </div>
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-header"><h3><i class="fas fa-chart-bar"></i> Actividad por Etapa</h3><span class="chart-meta" id="status-meta"></span></div>
+                    <canvas id="chart-status" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
-                <button class="btn-refresh" id="btn-refresh">
-                    <i class="fas fa-sync-alt"></i>
-                    <span>Actualizar</span>
+                <div class="chart-card">
+                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Top Causas de Quiebra</h3><span class="chart-meta"></span></div>
+                    <canvas id="chart-causes" height="260" style="width:100%;height:260px;"></canvas>
+                </div>
+            </div>
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-header"><h3><i class="fas fa-clock"></i> Actividad por Hora</h3></div>
+                    <canvas id="chart-hour" height="260" style="width:100%;height:260px;"></canvas>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3><i class="fas fa-chart-simple"></i> Top Dispositivos</h3></div>
+                    <canvas id="chart-devices" height="260" style="width:100%;height:260px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- =================== BREAKAGES TAB =================== -->
+        <div id="tab-breakages" class="tab-content">
+            <div class="breakages-header">
+                <h2><i class="fas fa-bug"></i> Registro de Quiebras</h2>
+                <button class="btn-primary" id="export-breakages-btn"><i class="fas fa-download"></i> Exportar</button>
+            </div>
+            <div class="filters-bar">
+                <input type="text" id="filter-job" placeholder="🔍 Buscar por Job o Causa..." class="filter-input">
+                <select id="filter-device" class="filter-select"><option value="">📟 Todos los dispositivos</option></select>
+                <select id="filter-user" class="filter-select"><option value="">👤 Todos los usuarios</option></select>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="breakages-table">
+                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Código</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th></tr></thead>
+                    <tbody id="breakages-tbody"></tbody>
+                </table>
+            </div>
+            <div class="table-footer"><span id="breakages-count">0</span> quiebras registradas</div>
+        </div>
+
+        <!-- =================== ACTIVITY TAB =================== -->
+        <div id="tab-activity" class="tab-content">
+            <div class="filters-bar">
+                <select id="act-status" class="filter-select"><option value="">📊 Todos los estados</option></select>
+                <select id="act-device" class="filter-select"><option value="">🖥️ Todos los dispositivos</option></select>
+                <select id="act-user" class="filter-select"><option value="">👥 Todos los usuarios</option></select>
+                <select id="act-side" class="filter-select"><option value="">👁️ Todos los lados</option><option value="R">OD (R)</option><option value="L">OI (L)</option></select>
+                <label class="checkbox-label"><input type="checkbox" id="act-only-brea"> ⚠️ Solo quiebras</label>
+                <input type="text" id="act-search" placeholder="🔍 Buscar..." class="filter-input" style="width:150px">
+                <button id="act-clear" class="btn-secondary">🗑️ Limpiar</button>
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="activity-table">
+                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th></tr></thead>
+                    <tbody id="activity-tbody"></tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <button id="prev-page" disabled>← Anterior</button>
+                <span id="page-info">Página 1</span>
+                <button id="next-page">Siguiente →</button>
+            </div>
+        </div>
+
+        <!-- =================== DEVICES TAB =================== -->
+        <div id="tab-devices" class="tab-content">
+            <div class="table-container">
+                <table class="data-table" id="devices-table">
+                    <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th><th>Quiebras</th><th>Tasa</th></tr></thead>
+                    <tbody id="devices-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- =================== OPERATORS TAB =================== -->
+        <div id="tab-operators" class="tab-content">
+            <div class="table-container">
+                <table class="data-table" id="operators-table">
+                    <thead><tr><th>Operador</th><th>Registros</th><th>Jobs</th><th>Quiebras</th><th>Tasa</th><th>Dispositivos</th></tr></thead>
+                    <tbody id="operators-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- =================== SEARCH TAB =================== -->
+        <div id="tab-search" class="tab-content">
+            <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input type="text" id="global-search" placeholder="Buscar en Job, Usuario, Lente, Dispositivo, Causa..." class="search-input">
+            </div>
+            <div class="table-container">
+                <table class="data-table" id="search-table">
+                    <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Info</th></tr></thead>
+                    <tbody id="search-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- =================== HISTÓRICO TAB =================== -->
+        <div id="tab-historico" class="tab-content">
+
+            <!-- Banner cuando hay datos históricos cargados -->
+            <div class="hist-viewing-banner hidden" id="hist-banner">
+                <div class="hist-banner-info">
+                    <i class="fas fa-calendar-check"></i>
+                    <div class="hist-banner-text">
+                        <h4 id="hist-banner-title">Viendo datos históricos</h4>
+                        <p id="hist-banner-sub">Archivo: —</p>
+                    </div>
+                </div>
+                <button class="btn-hist-close" id="btn-hist-close">
+                    <i class="fas fa-times"></i> Volver al en vivo
                 </button>
             </div>
-        </aside>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Top Bar -->
-            <header class="top-bar">
-                <div class="page-title">
-                    <h1 id="page-title">Dashboard</h1>
-                    <p id="file-info">Cargando datos...</p>
-                    <p id="backup-folder" class="backup-folder">Carpeta de respaldos: cargando...</p>
-                </div>
-                <div class="top-actions">
-                    <div class="last-update"><i class="far fa-clock"></i> <span id="last-update">--:--:--</span></div>
-                    <button class="btn-icon" id="btn-export" title="Exportar actividad"><i class="fas fa-download"></i></button>
-                    <button class="btn-icon" id="btn-backups" title="Respaldos"><i class="fas fa-archive"></i></button>
-                </div>
-            </header>
+            <!-- Panel de selección -->
+            <div class="hist-panel">
+                <h3><i class="fas fa-filter" style="color:#3b82f6;"></i> Seleccionar período</h3>
+                <div class="hist-controls">
 
-            <!-- Dashboard Tab -->
-            <div id="tab-dashboard" class="tab-content active">
-                <!-- KPI Cards -->
-                <div class="kpi-grid">
-                    <div class="kpi-card"><div class="kpi-icon blue"><i class="fas fa-database"></i></div><div class="kpi-info"><h3>Total Registros</h3><p id="kpi-total">0</p></div></div>
-                    <div class="kpi-card"><div class="kpi-icon teal"><i class="fas fa-briefcase"></i></div><div class="kpi-info"><h3>Jobs Únicos</h3><p id="kpi-jobs">0</p></div></div>
-                    <div class="kpi-card"><div class="kpi-icon red"><i class="fas fa-exclamation-triangle"></i></div><div class="kpi-info"><h3>Jobs c/Quiebra</h3><p id="kpi-brea">0</p></div></div>
-                    <div class="kpi-card"><div class="kpi-icon orange"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><h3>Tasa Quiebra</h3><p id="kpi-rate">0%</p></div></div>
-                    <div class="kpi-card"><div class="kpi-icon green"><i class="fas fa-user-check"></i></div><div class="kpi-info"><h3>Operadores</h3><p id="kpi-users">0</p></div></div>
-                    <div class="kpi-card"><div class="kpi-icon purple"><i class="fas fa-microchip"></i></div><div class="kpi-info"><h3>Dispositivos</h3><p id="kpi-devices">0</p></div></div>
-                    <!-- Eventos Quiebras removed by request -->
-                    <!-- Tipos Lente removed by request -->
-                </div>
-
-                <!-- Charts Row 1 -->
-                <div class="charts-row">
-                    <div class="chart-card">
-                        <div class="chart-header"><h3><i class="fas fa-chart-bar"></i> Actividad por Etapa</h3><span class="chart-meta" id="status-meta"></span></div>
-                        <canvas id="chart-status" height="260" style="width:100%; height:260px;"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Top Causas de Quiebra</h3><span class="chart-meta"></span></div>
-                        <canvas id="chart-causes" height="260" style="width:100%; height:260px;"></canvas>
-                    </div>
-                </div>
-
-                <!-- Charts Row 2 -->
-                <div class="charts-row">
-                    <div class="chart-card">
-                        <div class="chart-header"><h3><i class="fas fa-clock"></i> Actividad por Hora</h3></div>
-                        <canvas id="chart-hour" height="260" style="width:100%; height:260px;"></canvas>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-header"><h3><i class="fas fa-chart-simple"></i> Top Dispositivos</h3></div>
-                        <canvas id="chart-devices" height="260" style="width:100%; height:260px;"></canvas>
-                    </div>
-                </div>
-
-                <!-- Gauge & Top List removed -->
-            </div>
-
-            <!-- Breakages Tab -->
-            <div id="tab-breakages" class="tab-content">
-                <div class="breakages-header">
-                    <h2><i class="fas fa-bug"></i> Registro de Quiebras</h2>
-                    <button class="btn-primary" id="export-breakages-btn"><i class="fas fa-download"></i> Exportar</button>
-                </div>
-                <div class="filters-bar">
-                    <input type="text" id="filter-job" placeholder="🔍 Buscar por Job o Causa..." class="filter-input">
-                    <select id="filter-device" class="filter-select"><option value="">📟 Todos los dispositivos</option></select>
-                    <select id="filter-user" class="filter-select"><option value="">👤 Todos los usuarios</option></select>
-                </div>
-                <div class="table-container">
-                    <table class="data-table" id="breakages-table">
-                        <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Código</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th></tr></thead>
-                        <tbody id="breakages-tbody"></tbody>
-                    </table>
-                </div>
-                <div class="table-footer"><span id="breakages-count">0</span> quiebras registradas</div>
-            </div>
-
-            <!-- Activity Tab -->
-            <div id="tab-activity" class="tab-content">
-                <div class="filters-bar">
-                    <select id="act-status" class="filter-select"><option value="">📊 Todos los estados</option></select>
-                    <select id="act-device" class="filter-select"><option value="">🖥️ Todos los dispositivos</option></select>
-                    <select id="act-user" class="filter-select"><option value="">👥 Todos los usuarios</option></select>
-                    <select id="act-side" class="filter-select"><option value="">👁️ Todos los lados</option><option value="R">OD (R)</option><option value="L">OI (L)</option></select>
-                    <label class="checkbox-label"><input type="checkbox" id="act-only-brea"> ⚠️ Solo quiebras</label>
-                    <input type="text" id="act-search" placeholder="🔍 Buscar..." class="filter-input" style="width:150px">
-                    <button id="act-clear" class="btn-secondary">🗑️ Limpiar</button>
-                </div>
-                <div class="table-container">
-                    <table class="data-table" id="activity-table">
-                        <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th></tr></thead>
-                        <tbody id="activity-tbody"></tbody>
-                    </table>
-                </div>
-                <div class="pagination"><button id="prev-page" disabled>← Anterior</button><span id="page-info">Página 1</span><button id="next-page">Siguiente →</button></div>
-            </div>
-
-            <!-- Devices Tab -->
-            <div id="tab-devices" class="tab-content">
-                <div class="table-container">
-                    <table class="data-table" id="devices-table">
-                        <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th><th>Quiebras</th><th>Tasa</th></tr></thead>
-                        <tbody id="devices-tbody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Operators Tab -->
-            <div id="tab-operators" class="tab-content">
-                <div class="table-container">
-                    <table class="data-table" id="operators-table">
-                        <thead><tr><th>Operador</th><th>Registros</th><th>Jobs</th><th>Quiebras</th><th>Tasa</th><th>Dispositivos</th></tr></thead>
-                        <tbody id="operators-tbody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Search Tab -->
-            <div id="tab-search" class="tab-content">
-                <div class="search-bar">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="global-search" placeholder="Buscar en Job, Usuario, Lente, Dispositivo, Causa..." class="search-input">
-                </div>
-                <div class="table-container">
-                    <table class="data-table" id="search-table">
-                        <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Info</th></tr></thead>
-                        <tbody id="search-tbody"></tbody>
-                    </table>
-                </div>
-            </div>
-        </main>
-    </div>
-
-            <!-- Upload Tab -->
-            <div id="tab-upload" class="tab-content">
-                <div class="upload-container">
-                    <div class="upload-zone" id="upload-zone">
-                        <i class="fas fa-file-csv"></i>
-                        <h3>Importar archivo CSV</h3>
-                        <p>Arrastra aquí el archivo CSV de Lensware o haz clic para seleccionarlo.<br>
-                           Puedes navegarlo directamente desde <strong>\\172.16.8.32\Lensware\...\REPORTS</strong></p>
-                        <button class="btn-primary" onclick="document.getElementById('csv-file-input').click()">
-                            <i class="fas fa-folder-open"></i> Seleccionar archivo
-                        </button>
-                        <input type="file" id="csv-file-input" accept=".csv">
+                    <!-- Selector de fecha rápida por día disponible -->
+                    <div class="hist-field" style="flex:1;min-width:280px;">
+                        <label>Día (backups disponibles)</label>
+                        <div id="hist-day-picker" class="day-picker">
+                            <span style="font-size:12px;color:#94a3b8;padding:6px 0;">Cargando backups...</span>
+                        </div>
                     </div>
 
-                    <div class="upload-filename" id="upload-filename">
-                        <i class="fas fa-file-csv" style="color:#10b981;"></i>
-                        <span id="upload-filename-text">archivo.csv</span>
+                    <!-- Selector de backup específico del día elegido -->
+                    <div class="hist-field">
+                        <label>Backup del día</label>
+                        <select id="hist-backup-select" class="filter-select" style="min-width:260px;">
+                            <option value="">— Seleccionar día primero —</option>
+                        </select>
                     </div>
 
-                    <div class="upload-progress" id="upload-progress">
-                        <div class="upload-progress-bar" id="upload-progress-bar"></div>
+                    <!-- Rango horario -->
+                    <div class="hist-field">
+                        <label>Rango de hora (opcional)</label>
+                        <div class="hist-hour-range">
+                            <input type="number" id="hist-hour-from" min="0" max="23" placeholder="De (0)" title="Hora inicio (0-23)">
+                            <span>a</span>
+                            <input type="number" id="hist-hour-to" min="0" max="23" placeholder="A (23)" title="Hora fin (0-23)">
+                        </div>
                     </div>
 
-                    <div class="upload-result" id="upload-result">
-                        <i id="upload-result-icon" class="fas fa-check-circle"></i>
-                        <span id="upload-result-text"></span>
-                    </div>
-
-                    <button class="btn-upload-send" id="btn-upload-send" disabled>
-                        <i class="fas fa-cloud-upload-alt"></i> Subir y procesar CSV
+                    <!-- Botones -->
+                    <button class="btn-hist-load" id="btn-hist-load" disabled>
+                        <i class="fas fa-search"></i> Visualizar
                     </button>
+                    <button class="btn-hist-reset" id="btn-hist-reset" title="Limpiar filtros histórico">
+                        <i class="fas fa-undo"></i>
+                    </button>
+                </div>
 
-                    <div class="upload-info-box">
-                        <h4><i class="fas fa-info-circle" style="color:#3b82f6;"></i> Archivos aceptados</h4>
-                        Prefijos válidos: <code>UNI_PROD_ALL_ACT_</code> · <code>UNI_PROD_SIMPLE_ACT_</code><br>
-                        Formato: <code>.csv</code> · Codificación: UTF-8, ISO-8859-1 o Windows-1252<br>
-                        Tamaño máximo: <code>50 MB</code><br><br>
-                        <strong>Cómo acceder a la carpeta de red:</strong><br>
-                        En el explorador de Windows abre <code>\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS</code>
-                        y selecciona el CSV más reciente.
-                    </div>
+                <!-- Barra de estado -->
+                <div class="hist-status-bar hidden" id="hist-status-bar">
+                    <i class="fas fa-circle-notch fa-spin-custom" id="hist-status-icon"></i>
+                    <span id="hist-status-text">Cargando...</span>
                 </div>
             </div>
 
-    <!-- Modals -->
-    <div id="modal-backups" class="modal"><div class="modal-content"><div class="modal-header"><h2><i class="fas fa-archive"></i> Respaldos</h2><button class="modal-close">&times;</button></div><div class="modal-body"><div id="backups-list"></div></div></div></div>
-    <div id="modal-device" class="modal"><div class="modal-content modal-large"><div class="modal-header"><h2 id="modal-device-title">Detalle del Dispositivo</h2><button class="modal-close">&times;</button></div><div class="modal-body"><div id="device-details"></div></div></div></div>
-    <div id="modal-detail" class="modal"><div class="modal-content"><div class="modal-header"><h2 id="detail-title">Detalle</h2><button class="modal-close">&times;</button></div><div class="modal-body" id="detail-body"></div></div></div>
+            <!-- Contenido histórico (vacío por defecto) -->
+            <div id="hist-content">
+                <div class="hist-empty">
+                    <i class="fas fa-calendar-alt" style="color:#cbd5e1;"></i>
+                    <h3>Selecciona un día para comenzar</h3>
+                    <p>Elige un backup de la lista superior para visualizar datos históricos.<br>
+                       Hoy muestra el último backup disponible. Días anteriores muestran el respaldo diario oficial (23:59).</p>
+                </div>
+            </div>
+        </div>
 
-    <script src="js/app.js"></script>
-    <script>
-    // ========== UPLOAD CSV ==========
-    (function() {
-        const zone      = document.getElementById('upload-zone');
-        const input     = document.getElementById('csv-file-input');
-        const nameBox   = document.getElementById('upload-filename');
-        const nameText  = document.getElementById('upload-filename-text');
-        const sendBtn   = document.getElementById('btn-upload-send');
-        const progress  = document.getElementById('upload-progress');
-        const progBar   = document.getElementById('upload-progress-bar');
-        const result    = document.getElementById('upload-result');
-        const resultIcon= document.getElementById('upload-result-icon');
-        const resultText= document.getElementById('upload-result-text');
+        <!-- =================== UPLOAD TAB =================== -->
+        <div id="tab-upload" class="tab-content">
+            <div class="upload-container">
+                <div class="upload-zone" id="upload-zone">
+                    <i class="fas fa-file-csv"></i>
+                    <h3>Importar archivo CSV</h3>
+                    <p>Arrastra aquí el archivo CSV de Lensware o haz clic para seleccionarlo.<br>
+                       Puedes navegarlo desde <strong>\\172.16.8.32\Lensware\...\REPORTS</strong></p>
+                    <button class="btn-primary" onclick="document.getElementById('csv-file-input').click()">
+                        <i class="fas fa-folder-open"></i> Seleccionar archivo
+                    </button>
+                    <input type="file" id="csv-file-input" accept=".csv">
+                </div>
+                <div class="upload-filename" id="upload-filename">
+                    <i class="fas fa-file-csv" style="color:#10b981;"></i>
+                    <span id="upload-filename-text">archivo.csv</span>
+                </div>
+                <div class="upload-progress" id="upload-progress">
+                    <div class="upload-progress-bar" id="upload-progress-bar"></div>
+                </div>
+                <div class="upload-result" id="upload-result">
+                    <i id="upload-result-icon" class="fas fa-check-circle"></i>
+                    <span id="upload-result-text"></span>
+                </div>
+                <button class="btn-upload-send" id="btn-upload-send" disabled>
+                    <i class="fas fa-cloud-upload-alt"></i> Subir y procesar CSV
+                </button>
+                <div class="upload-info-box">
+                    <h4><i class="fas fa-info-circle" style="color:#3b82f6;"></i> Archivos aceptados</h4>
+                    Prefijos válidos: <code>UNI_PROD_ALL_ACT_</code> · <code>UNI_PROD_SIMPLE_ACT_</code><br>
+                    Formato: <code>.csv</code> · Codificación: UTF-8, ISO-8859-1 o Windows-1252<br>
+                    Tamaño máximo: <code>50 MB</code><br><br>
+                    <strong>Cómo acceder a la carpeta de red:</strong><br>
+                    En el explorador de Windows abre <code>\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS</code>
+                    y selecciona el CSV más reciente.
+                </div>
+            </div>
+        </div>
 
-        let selectedFile = null;
+    </main>
+</div>
 
-        // Drag & drop
-        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
-        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-        zone.addEventListener('drop', e => {
-            e.preventDefault();
-            zone.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file) setFile(file);
-        });
+<!-- Modals -->
+<div id="modal-backups" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><i class="fas fa-archive"></i> Respaldos</h2>
+            <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body"><div id="backups-list"></div></div>
+    </div>
+</div>
+<div id="modal-device" class="modal">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h2 id="modal-device-title">Detalle del Dispositivo</h2>
+            <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body"><div id="device-details"></div></div>
+    </div>
+</div>
+<div id="modal-detail" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="detail-title">Detalle</h2>
+            <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="detail-body"></div>
+    </div>
+</div>
 
-        input.addEventListener('change', () => {
-            if (input.files[0]) setFile(input.files[0]);
-        });
+<script src="js/app.js"></script>
+<script>
+// ========== UPLOAD CSV ==========
+(function() {
+    const zone      = document.getElementById('upload-zone');
+    const input     = document.getElementById('csv-file-input');
+    const nameBox   = document.getElementById('upload-filename');
+    const nameText  = document.getElementById('upload-filename-text');
+    const sendBtn   = document.getElementById('btn-upload-send');
+    const progress  = document.getElementById('upload-progress');
+    const progBar   = document.getElementById('upload-progress-bar');
+    const result    = document.getElementById('upload-result');
+    const resultIcon= document.getElementById('upload-result-icon');
+    const resultText= document.getElementById('upload-result-text');
+    let selectedFile = null;
 
-        function setFile(file) {
-            selectedFile = file;
-            nameText.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-            nameBox.classList.add('visible');
-            sendBtn.disabled = false;
-            hideResult();
-        }
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) setFile(file);
+    });
+    input.addEventListener('change', () => { if (input.files[0]) setFile(input.files[0]); });
 
-        sendBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
+    function setFile(file) {
+        selectedFile = file;
+        nameText.textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+        nameBox.classList.add('visible');
+        sendBtn.disabled = false;
+        hideResult();
+    }
 
-            sendBtn.disabled = true;
-            progress.classList.add('visible');
-            progBar.style.width = '30%';
-            hideResult();
-
-            const formData = new FormData();
-            formData.append('csv_file', selectedFile);
-
-            // Leer UPLOAD_SECRET desde meta tag o usar vacío (Railway lo valida)
-            const secret = document.querySelector('meta[name="upload-secret"]')?.content || '';
-            if (secret && secret !== 'changeme') formData.append('secret', secret);
-
-            try {
-                progBar.style.width = '60%';
-                const headers = (secret && secret !== 'changeme') ? { 'X-Upload-Secret': secret } : {};
-                const response = await fetch('api.php?action=upload_csv', {
-                    method: 'POST',
-                    headers: headers,
-                    body: formData
-                });
-
-                progBar.style.width = '100%';
-                const data = await response.json();
-
-                setTimeout(() => {
-                    progress.classList.remove('visible');
-                    progBar.style.width = '0%';
-
-                    if (data.success) {
-                        showResult('success', '✅ ' + (data.message || 'CSV importado correctamente'));
-                        // Recargar datos del dashboard automáticamente
-                        setTimeout(() => {
-                            if (typeof loadData === 'function') loadData();
-                        }, 800);
-                    } else {
-                        showResult('error', '❌ ' + (data.error || 'Error al subir el archivo'));
-                    }
-                    sendBtn.disabled = false;
-                }, 400);
-
-            } catch (err) {
-                progress.classList.remove('visible');
-                showResult('error', '❌ Error de conexión: ' + err.message);
+    sendBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        sendBtn.disabled = true;
+        progress.classList.add('visible');
+        progBar.style.width = '30%';
+        hideResult();
+        const formData = new FormData();
+        formData.append('csv_file', selectedFile);
+        const secret = document.querySelector('meta[name="upload-secret"]')?.content || '';
+        if (secret && secret !== 'changeme') formData.append('secret', secret);
+        try {
+            progBar.style.width = '60%';
+            const headers = (secret && secret !== 'changeme') ? { 'X-Upload-Secret': secret } : {};
+            const response = await fetch('api.php?action=upload_csv', { method:'POST', headers, body:formData });
+            progBar.style.width = '100%';
+            const data = await response.json();
+            setTimeout(() => {
+                progress.classList.remove('visible'); progBar.style.width = '0%';
+                if (data.success) {
+                    showResult('success', '✅ ' + (data.message || 'CSV importado correctamente'));
+                    setTimeout(() => { if (typeof loadData === 'function') loadData(); }, 800);
+                } else {
+                    showResult('error', '❌ ' + (data.error || 'Error al subir el archivo'));
+                }
                 sendBtn.disabled = false;
-            }
-        });
-
-        function showResult(type, msg) {
-            result.className = 'upload-result visible ' + type;
-            resultIcon.className = type === 'success' ? 'fas fa-check-circle' : 'fas fa-times-circle';
-            resultText.textContent = msg;
+            }, 400);
+        } catch(err) {
+            progress.classList.remove('visible');
+            showResult('error', '❌ Error de conexión: ' + err.message);
+            sendBtn.disabled = false;
         }
+    });
 
-        function hideResult() {
-            result.classList.remove('visible');
-        }
-    })();
-    </script>
+    function showResult(type, msg) {
+        result.className = 'upload-result visible ' + type;
+        resultIcon.className = type === 'success' ? 'fas fa-check-circle' : 'fas fa-times-circle';
+        resultText.textContent = msg;
+    }
+    function hideResult() { result.classList.remove('visible'); }
+})();
+</script>
 </body>
 </html>

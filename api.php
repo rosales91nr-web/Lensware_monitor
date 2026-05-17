@@ -1,5 +1,5 @@
 <?php
-// api.php - API REST (Railway-ready)
+// api.php - API REST (Railway-ready) + Histórico de Backups
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
@@ -98,6 +98,145 @@ try {
             respondJson(['success' => true, 'backups' => listBackups()]);
 
         // ------------------------------------------------------------------ //
+        // Retorna backups agrupados por fecha (YYYY-MM-DD), incluyendo
+        // el backup más reciente de hoy y el único _2359_ del día anterior.
+        // GET api.php?action=backups_by_date
+        // ------------------------------------------------------------------ //
+        case 'backups_by_date':
+            $all = listBackups(); // ya ordenados por modified desc
+
+            // Extraemos fecha de cada backup del nombre: BACKUP_YYYYMMDD_...
+            // o del campo modified como fallback
+            $byDate = [];
+            foreach ($all as $b) {
+                $name = $b['filename'];
+                // Intentar extraer fecha del nombre: BACKUP_20250517_... o BACKUP_20250517_2359_...
+                if (preg_match('/BACKUP_(\d{4})(\d{2})(\d{2})_/', $name, $m)) {
+                    $dateKey = "{$m[1]}-{$m[2]}-{$m[3]}";
+                } else {
+                    $dateKey = substr($b['modified'], 0, 10);
+                }
+                $byDate[$dateKey][] = $b;
+            }
+
+            // Ordenar fechas descendente
+            krsort($byDate);
+
+            // Para el histórico solo necesitamos:
+            // - Hoy: el backup más reciente (primero en la lista de hoy, ya que listBackups() ordena desc)
+            // - Días anteriores: solo el _2359_ (el diario). Si no existe _2359_, el más reciente de ese día.
+            $today = (new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica')))->format('Y-m-d');
+
+            $result = [];
+            foreach ($byDate as $date => $backups) {
+                if ($date === $today) {
+                    // Hoy: el más reciente disponible (primero ya que está desc)
+                    $result[] = [
+                        'date'     => $date,
+                        'label'    => 'Hoy',
+                        'is_today' => true,
+                        'backup'   => $backups[0],
+                        'all'      => $backups,  // todos los de hoy para selector por hora
+                    ];
+                } else {
+                    // Días anteriores: preferir el _2359_ (diario oficial)
+                    $daily = null;
+                    foreach ($backups as $b) {
+                        if (str_contains($b['filename'], '_2359_')) {
+                            $daily = $b;
+                            break;
+                        }
+                    }
+                    $chosen = $daily ?? $backups[0];
+                    $result[] = [
+                        'date'     => $date,
+                        'label'    => date('d/m/Y', strtotime($date)),
+                        'is_today' => false,
+                        'backup'   => $chosen,
+                        'all'      => $backups,
+                    ];
+                }
+            }
+
+            respondJson(['success' => true, 'data' => $result]);
+
+        // ------------------------------------------------------------------ //
+        // Procesa un backup específico por nombre de archivo y retorna sus datos.
+        // GET api.php?action=backup_data&file=BACKUP_20250517_123456_UNI_PROD...csv
+        // Opcionalmente: &date_filter=2025-05-17&hour_from=08&hour_to=16
+        // ------------------------------------------------------------------ //
+        case 'backup_data':
+            $filename = basename($_GET['file'] ?? '');
+            if ($filename === '' || !str_starts_with($filename, 'BACKUP_')) {
+                respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
+            }
+
+            $filepath = BACKUP_FOLDER . '/' . $filename;
+            if (!file_exists($filepath)) {
+                respondJson(['success' => false, 'error' => 'Backup no encontrado'], 404);
+            }
+
+            $data = processCSV($filepath);
+            if (!$data || empty($data['records'])) {
+                respondJson(['success' => false, 'error' => 'Error al procesar el backup'], 500);
+            }
+
+            $records = $data['records'];
+
+            // Filtro de fecha si se especifica
+            $dateFilter = trim($_GET['date_filter'] ?? '');
+            if ($dateFilter !== '') {
+                // date_raw puede venir como DD/MM/YYYY o YYYY-MM-DD según el CSV
+                $records = array_values(array_filter($records, function($r) use ($dateFilter) {
+                    // Normalizar date_raw a YYYY-MM-DD para comparar
+                    $d = $r['date_raw'];
+                    // Si tiene formato DD/MM/YYYY
+                    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
+                        $normalized = "{$m[3]}-{$m[2]}-{$m[1]}";
+                    } elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d)) {
+                        $normalized = $d;
+                    } elseif (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $d, $m)) {
+                        $normalized = "{$m[3]}-{$m[2]}-{$m[1]}";
+                    } else {
+                        $normalized = $d;
+                    }
+                    return $normalized === $dateFilter;
+                }));
+            }
+
+            // Filtro de rango horario
+            $hourFrom = $_GET['hour_from'] ?? '';
+            $hourTo   = $_GET['hour_to']   ?? '';
+            if ($hourFrom !== '' || $hourTo !== '') {
+                $from = $hourFrom !== '' ? (int)$hourFrom : 0;
+                $to   = $hourTo   !== '' ? (int)$hourTo   : 23;
+                $records = array_values(array_filter($records, function($r) use ($from, $to) {
+                    $hour = (int)substr($r['time_raw'], 0, 2);
+                    return $hour >= $from && $hour <= $to;
+                }));
+            }
+
+            if (empty($records)) {
+                respondJson(['success' => false, 'error' => 'Sin registros para ese filtro'], 404);
+            }
+
+            $result = [
+                'records'      => $records,
+                'stats'        => calculateStats($records),
+                'breakages'    => getBreakages($records),
+                'device_stats' => getDeviceStats($records),
+                'filename'     => $filename,
+                'source'       => 'backup',
+                'filters'      => [
+                    'date_filter' => $dateFilter,
+                    'hour_from'   => $hourFrom,
+                    'hour_to'     => $hourTo,
+                ],
+            ];
+
+            respondJson(['success' => true, 'data' => $result]);
+
+        // ------------------------------------------------------------------ //
         case 'download_backup':
             $secret = $_GET['secret'] ?? '';
             if (UPLOAD_SECRET !== 'changeme' && $secret !== UPLOAD_SECRET) {
@@ -121,9 +260,6 @@ try {
             readfile($filepath);
             exit;
 
-        // ------------------------------------------------------------------ //
-        // Borra todos los backups intermedios, conserva solo los _2359_ (diarios)
-        // GET api.php?action=cleanup_backups&secret=TU_UPLOAD_SECRET
         // ------------------------------------------------------------------ //
         case 'cleanup_backups':
             $secret = $_GET['secret'] ?? '';
