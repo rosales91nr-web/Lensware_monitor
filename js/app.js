@@ -613,6 +613,10 @@ async function loadHistBackupDays() {
         }
         histState.backupsByDate = result.data;
         renderHistDayChips();
+        // Pre-seleccionar hoy (último backup) o el día más reciente disponible
+        const todayEntry = histState.backupsByDate.find(d => d.is_today)
+            || histState.backupsByDate[0];
+        if (todayEntry) selectHistDay(todayEntry.date);
     } catch(e) {
         picker.innerHTML = '<span style="font-size:12px;color:#ef4444;">Error al cargar backups.</span>';
     }
