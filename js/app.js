@@ -949,7 +949,9 @@ async function showBackups() {
             if (!Array.isArray(backups) || backups.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:60px;"><i class="fas fa-archive" style="font-size:48px; color:#cbd5e1;"></i><p style="margin-top:16px;">No hay respaldos guardados</p></div>';
             } else {
+                const backupFolderText = appData?.backup_folder ? `Carpeta de respaldos: ${escapeHtml(appData.backup_folder)}` : 'Carpeta de respaldos: desconocida';
                 container.innerHTML = `
+                    <div style="font-size:12px; color:#475569; margin-bottom:14px;">${backupFolderText}</div>
                     <table style="width:100%; border-collapse:collapse;">
                         <thead>
                             <tr style="background:#f8fafc;">
