@@ -1,7 +1,7 @@
 <?php
 // api.php - API REST (Railway-ready)
 error_reporting(E_ALL);
-ini_set('display_errors', 0); // producción: no mostrar errores en pantalla
+ini_set('display_errors', 0);
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -89,8 +89,7 @@ try {
             }
             $cache = readCache();
             if (!$cache || empty($cache['records'])) {
-                echo json_encode(['success' => false, 'error' => 'No hay datos']);
-                break;
+                respondJson(['success' => false, 'error' => 'No hay datos']);
             }
             respondJson(['success' => true, 'details' => getDeviceDetails($cache['records'], $deviceName)]);
 
@@ -99,24 +98,41 @@ try {
             respondJson(['success' => true, 'backups' => listBackups()]);
 
         // ------------------------------------------------------------------ //
-        // Subida de CSV desde Windows (script bat/powershell en el servidor Lensware)
-        // POST api.php?action=upload_csv
-        // Header: X-Upload-Secret: <UPLOAD_SECRET>
-        // Body: multipart/form-data, campo "csv_file"
+        case 'download_backup':
+            $secret = $_GET['secret'] ?? '';
+            if (UPLOAD_SECRET !== 'changeme' && $secret !== UPLOAD_SECRET) {
+                respondJson(['success' => false, 'error' => 'No autorizado'], 403);
+            }
+
+            $filename = basename($_GET['file'] ?? '');
+            if ($filename === '' || !str_starts_with($filename, 'BACKUP_')) {
+                respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
+            }
+
+            $filepath = BACKUP_FOLDER . '/' . $filename;
+            if (!file_exists($filepath)) {
+                respondJson(['success' => false, 'error' => 'Archivo no encontrado'], 404);
+            }
+
+            // Limpiar cualquier output previo antes de enviar el archivo
+            if (ob_get_length() !== false) ob_clean();
+
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . filesize($filepath));
+            readfile($filepath);
+            exit;
+
         // ------------------------------------------------------------------ //
         case 'upload_csv':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-                http_response_code(405);
                 respondJson(['success' => false, 'error' => 'Método no permitido'], 405);
             }
 
-            // Si UPLOAD_SECRET es 'changeme' o vacío, no se requiere auth (uso interno).
-            // Para producción pública, define UPLOAD_SECRET en Railway Variables.
             $requireAuth = (UPLOAD_SECRET !== 'changeme' && UPLOAD_SECRET !== '');
             if ($requireAuth) {
                 $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
                 if ($secret !== UPLOAD_SECRET) {
-                    http_response_code(403);
                     respondJson(['success' => false, 'error' => 'No autorizado'], 403);
                 }
             }
@@ -128,7 +144,6 @@ try {
             $file     = $_FILES['csv_file'];
             $origName = basename($file['name']);
 
-            // Validar extensión y prefijo
             $validPrefix = false;
             foreach (CSV_PREFIXES as $prefix) {
                 if (str_starts_with($origName, $prefix)) { $validPrefix = true; break; }
@@ -139,7 +154,6 @@ try {
 
             $dest = WATCH_FOLDER . '/' . $origName;
 
-            // Guardar respaldo del anterior si existe
             if (file_exists($dest)) {
                 backupCSV($dest);
             }
@@ -148,7 +162,6 @@ try {
                 respondJson(['success' => false, 'error' => 'Error al guardar archivo'], 500);
             }
 
-            // Invalidar caché para que se regenere con el nuevo CSV
             if (file_exists(CACHE_FILE)) unlink(CACHE_FILE);
 
             logMessage("CSV subido: $origName");
@@ -158,12 +171,13 @@ try {
         case 'export':
             $cache = readCache();
             if (!$cache || empty($cache['records'])) {
-                echo json_encode(['success' => false, 'error' => 'No hay datos']);
-                break;
+                respondJson(['success' => false, 'error' => 'No hay datos']);
             }
 
             $type     = $_GET['type'] ?? 'activity';
             $filename = 'lensware_export_' . date('Ymd_His') . '.csv';
+
+            if (ob_get_length() !== false) ob_clean();
 
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
