@@ -19,10 +19,6 @@ function findLatestCSV(): ?string {
     return $latest;
 }
 
-// Columnas reales Lensware (TAB separado):
-// Job | Date | Time | Status | Text | Batch/Info | User | Device |
-// Sg | R/L | Option | Type | DM | Lens description |
-// Blank description | Bcrv | Index | Reason | Reason Descr | Dep BR/RM
 function processCSV(string $filepath): ?array {
     if (!file_exists($filepath)) {
         logMessage("Archivo no encontrado: $filepath", 'error');
@@ -236,12 +232,12 @@ function getDeviceDetails(array $records, string $deviceName): array {
     }
     arsort($jobs);
     return [
-        'records'            => $filtered,
-        'total_records'      => count($filtered),
-        'total_jobs'         => count($jobs),
-        'breakages'          => $brea,
-        'hour_distribution'  => $hourDist,
-        'jobs'               => $jobs,
+        'records'           => $filtered,
+        'total_records'     => count($filtered),
+        'total_jobs'        => count($jobs),
+        'breakages'         => $brea,
+        'hour_distribution' => $hourDist,
+        'jobs'              => $jobs,
     ];
 }
 
@@ -268,15 +264,6 @@ function saveCache(array $data): bool {
     return file_put_contents(CACHE_FILE, $json, LOCK_EX) !== false;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX Bug 2: Prevenir backups duplicados
-// Antes: comparaba filemtime del CSV vs filemtime del último backup.
-// El problema es que cuando se sube un nuevo CSV, el backup se crea con
-// filemtime ≈ ahora, pero en la próxima request el CSV también tiene
-// filemtime ≈ ahora → volvía a crear un backup innecesario.
-// Solución: guardar en un archivo de estado la marca de tiempo del último
-// CSV procesado. Solo se hace backup si el CSV cambió desde ese registro.
-// ─────────────────────────────────────────────────────────────────────────────
 function getLastBackupTimestamp(): int {
     $stateFile = __DIR__ . '/../cache/last_backup.txt';
     if (!file_exists($stateFile)) return 0;
@@ -309,7 +296,6 @@ function ensureCSVBackups(string $filepath): void {
     if (!file_exists($filepath)) return;
 
     $dir = BACKUP_FOLDER;
-    // FIX Bug 3: Verificar permisos de escritura antes de intentar crear backups
     if (!is_dir($dir)) {
         if (!@mkdir($dir, 0777, true)) {
             logMessage("No se pudo crear BACKUP_FOLDER: $dir", 'error');
@@ -324,16 +310,12 @@ function ensureCSVBackups(string $filepath): void {
     $now    = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
     $csvMts = filemtime($filepath);
 
-    // FIX Bug 2: Usar timestamp persistido en lugar de comparar con filemtime del backup
     $lastBackupTs = getLastBackupTimestamp();
     if ($csvMts > $lastBackupTs) {
         backupCSV($filepath);
         saveLastBackupTimestamp($csvMts);
     }
 
-    // FIX Bug 4: El backup diario igual depende de esta función cuando no hay cron,
-    // pero ahora supervisord.conf lo llama cada 5 min vía monitor.php.
-    // Esta lógica queda como fallback.
     if ($now->format('Hi') >= '2355' && $now->format('Hi') <= '2359' && !hasDailyCSVBackup($filepath, $now)) {
         backupCSV($filepath, $now->format('Ymd_2359'));
     }
@@ -351,7 +333,6 @@ function backupCSV(string $filepath, ?string $timestamp = null): void {
     $stamp = $timestamp ?? date('Ymd_His');
     $dest  = $dir . '/BACKUP_' . $stamp . '_' . basename($filepath);
 
-    // Evitar sobrescribir un backup que ya existe con el mismo timestamp
     if (file_exists($dest)) {
         logMessage("Backup ya existe, omitido: " . basename($dest));
         return;
@@ -376,8 +357,44 @@ function listBackups(): array {
             'name'     => basename($f),
             'size'     => filesize($f),
             'modified' => date('Y-m-d H:i:s', filemtime($f)),
+            'is_daily' => str_contains(basename($f), '_2359_'),
         ];
     }
     usort($list, fn($a, $b) => strcmp($b['modified'], $a['modified']));
     return $list;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cleanupOldBackups:
+// - Conserva TODOS los backups _2359_ (uno por día = el oficial)
+// - Borra todos los intermedios (sin _2359_ en el nombre)
+// - Retorna resumen de lo que borró
+// ─────────────────────────────────────────────────────────────────────────────
+function cleanupOldBackups(): array {
+    $dir = BACKUP_FOLDER;
+    if (!is_dir($dir)) return ['deleted' => 0, 'kept' => 0, 'files_deleted' => []];
+
+    $files   = glob($dir . '/BACKUP_*.csv') ?: [];
+    $deleted = [];
+    $kept    = 0;
+
+    foreach ($files as $f) {
+        $name = basename($f);
+        if (str_contains($name, '_2359_')) {
+            $kept++;
+            continue;
+        }
+        if (@unlink($f)) {
+            $deleted[] = $name;
+            logMessage("Backup intermedio eliminado: $name");
+        } else {
+            logMessage("No se pudo eliminar: $name", 'error');
+        }
+    }
+
+    return [
+        'deleted'       => count($deleted),
+        'kept'          => $kept,
+        'files_deleted' => $deleted,
+    ];
 }

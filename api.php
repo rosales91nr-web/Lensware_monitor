@@ -114,14 +114,28 @@ try {
                 respondJson(['success' => false, 'error' => 'Archivo no encontrado'], 404);
             }
 
-            // Limpiar cualquier output previo antes de enviar el archivo
             if (ob_get_length() !== false) ob_clean();
-
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
             header('Content-Length: ' . filesize($filepath));
             readfile($filepath);
             exit;
+
+        // ------------------------------------------------------------------ //
+        // Borra todos los backups intermedios, conserva solo los _2359_ (diarios)
+        // GET api.php?action=cleanup_backups&secret=TU_UPLOAD_SECRET
+        // ------------------------------------------------------------------ //
+        case 'cleanup_backups':
+            $secret = $_GET['secret'] ?? '';
+            if (UPLOAD_SECRET !== 'changeme' && $secret !== UPLOAD_SECRET) {
+                respondJson(['success' => false, 'error' => 'No autorizado'], 403);
+            }
+            $result = cleanupOldBackups();
+            respondJson([
+                'success' => true,
+                'message' => "Limpieza completada: {$result['deleted']} eliminados, {$result['kept']} conservados",
+                'data'    => $result
+            ]);
 
         // ------------------------------------------------------------------ //
         case 'upload_csv':
@@ -178,12 +192,11 @@ try {
             $filename = 'lensware_export_' . date('Ymd_His') . '.csv';
 
             if (ob_get_length() !== false) ob_clean();
-
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
 
             $output = fopen('php://output', 'w');
-            fwrite($output, "\xEF\xBB\xBF"); // BOM UTF-8
+            fwrite($output, "\xEF\xBB\xBF");
 
             if ($type === 'breakages') {
                 fputcsv($output, ['Job', 'Fecha', 'Hora', 'OD/OI', 'Causa', 'Código', 'Usuario', 'Lente', 'Blank', 'Dispositivo']);
@@ -199,9 +212,9 @@ try {
                 fputcsv($output, ['Job', 'Fecha', 'Hora', 'Status', 'Usuario', 'Dispositivo', 'Lado', 'Lente']);
                 foreach ($cache['records'] as $r) {
                     fputcsv($output, [
-                        $r['job'],        $r['date_raw'],    $r['time_raw'],
-                        $r['status_label'], $r['user'] ?? '', $r['device'] ?? '',
-                        $r['side_label'], $r['lens_desc'] ?? ''
+                        $r['job'],          $r['date_raw'],    $r['time_raw'],
+                        $r['status_label'], $r['user'] ?? '',  $r['device'] ?? '',
+                        $r['side_label'],   $r['lens_desc'] ?? ''
                     ]);
                 }
             }
