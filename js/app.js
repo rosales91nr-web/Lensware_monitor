@@ -175,6 +175,7 @@ async function loadData() {
             updateStatus(true);
             document.getElementById('file-info').textContent = `📄 Archivo: ${appData.filename}`;
             document.getElementById('last-update').textContent = formatTime(new Date());
+            document.getElementById('backup-folder').textContent = `Carpeta de respaldos: ${appData.backup_folder || 'desconocida'}`;
             console.log('Datos cargados:', appData.stats);
         } else {
             updateStatus(false, result.error);

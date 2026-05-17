@@ -58,11 +58,12 @@ try {
             }
 
             $result = [
-                'records'      => $data['records'],
-                'stats'        => calculateStats($data['records']),
-                'breakages'    => getBreakages($data['records']),
-                'device_stats' => getDeviceStats($data['records']),
-                'filename'     => $data['filename']
+                'records'       => $data['records'],
+                'stats'         => calculateStats($data['records']),
+                'breakages'     => getBreakages($data['records']),
+                'device_stats'  => getDeviceStats($data['records']),
+                'filename'      => $data['filename'],
+                'backup_folder' => BACKUP_FOLDER
             ];
 
             saveCache($result);

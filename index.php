@@ -659,6 +659,7 @@ canvas {
                 <div class="page-title">
                     <h1 id="page-title">Dashboard</h1>
                     <p id="file-info">Cargando datos...</p>
+                    <p id="backup-folder" class="backup-folder">Carpeta de respaldos: cargando...</p>
                 </div>
                 <div class="top-actions">
                     <div class="last-update"><i class="far fa-clock"></i> <span id="last-update">--:--:--</span></div>
