@@ -297,6 +297,23 @@ function hasDailyCSVBackup(string $filepath, DateTimeInterface $date): bool {
     return file_exists($dailyFile);
 }
 
+function ensureCSVBackups(string $filepath): void {
+    if (!file_exists($filepath)) return;
+    $dir = BACKUP_FOLDER;
+    if (!is_dir($dir)) mkdir($dir, 0777, true);
+
+    $now = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
+    $lastBackup = getLastCSVBackup($filepath);
+
+    if (!$lastBackup || filemtime($filepath) > filemtime($lastBackup)) {
+        backupCSV($filepath);
+    }
+
+    if ($now->format('Hi') >= '2355' && $now->format('Hi') <= '2359' && !hasDailyCSVBackup($filepath, $now)) {
+        backupCSV($filepath, $now->format('Ymd_2359'));
+    }
+}
+
 function backupCSV(string $filepath, ?string $timestamp = null): void {
     if (!file_exists($filepath)) return;
     $dir = BACKUP_FOLDER;

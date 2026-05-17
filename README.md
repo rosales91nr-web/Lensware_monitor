@@ -122,7 +122,9 @@ lensware-pro/
   - `/var/www/html/uploads` para los CSVs entrantes  
   - `/var/www/html/backups` para los archivos de respaldo  
   En Railway → tu servicio → **Volumes** → Add Volume → mount path: `/var/www/html/uploads`  
-  Repite para `/var/www/html/backups` o configura `BACKUP_FOLDER` si montas en otra ruta.
+  Repite para `/var/www/html/backups` o configura `BACKUP_FOLDER` si montas en otra ruta.  
+  
+  **Opción alterna:** la aplicación ahora crea sus propios backups dentro del volumen persistente cada vez que se procesa el CSV y también genera un respaldo diario antes de las 23:59 hora Costa Rica, sin depender del servicio de backups Pro de Railway.
 
 - **Logs**: disponibles en Railway → tu servicio → **Logs**
 

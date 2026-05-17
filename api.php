@@ -49,6 +49,8 @@ try {
                 break;
             }
 
+            ensureCSVBackups($latestCSV);
+
             $data = processCSV($latestCSV);
             if (!$data || empty($data['records'])) {
                 echo json_encode(['success' => false, 'error' => 'Error al procesar CSV']);
