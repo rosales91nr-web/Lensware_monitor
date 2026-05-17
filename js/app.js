@@ -202,6 +202,74 @@ function updateUI() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Gráficas — etiquetas de cantidad visibles
+// ─────────────────────────────────────────────────────────────────────────────
+if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+    Chart.register(ChartDataLabels);
+}
+
+function chartLabelFormatter(value) {
+    if (value == null || value === 0) return '';
+    return Number(value).toLocaleString('es-CR');
+}
+
+function getChartOptions(type, overrides = {}) {
+    const datalabels = {
+        display: (ctx) => {
+            const v = ctx.dataset.data[ctx.dataIndex];
+            return v != null && Number(v) > 0;
+        },
+        formatter: (v) => chartLabelFormatter(v),
+        font: { weight: '700', size: 10 },
+        padding: 2,
+    };
+
+    const opts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false },
+            datalabels,
+        },
+    };
+
+    switch (type) {
+        case 'bar':
+            datalabels.anchor = 'end';
+            datalabels.align = 'top';
+            datalabels.color = '#1e293b';
+            opts.scales = { y: { beginAtZero: true } };
+            opts.layout = { padding: { top: 22 } };
+            break;
+        case 'bar-h':
+            datalabels.anchor = 'end';
+            datalabels.align = 'right';
+            datalabels.color = '#1e293b';
+            opts.indexAxis = 'y';
+            opts.scales = { x: { beginAtZero: true } };
+            opts.layout = { padding: { right: 36 } };
+            break;
+        case 'line':
+            datalabels.anchor = 'end';
+            datalabels.align = 'top';
+            datalabels.color = '#1d4ed8';
+            datalabels.offset = 4;
+            opts.scales = { y: { beginAtZero: true } };
+            opts.layout = { padding: { top: 20 } };
+            break;
+        case 'doughnut':
+            datalabels.anchor = 'center';
+            datalabels.align = 'center';
+            datalabels.color = '#ffffff';
+            opts.plugins.legend = { position: 'right', labels: { font: { size: 11 } } };
+            delete opts.scales;
+            break;
+    }
+
+    return Object.assign({}, opts, overrides);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Gráficas principales (en vivo)
 // ─────────────────────────────────────────────────────────────────────────────
 function renderCharts(stats) {
@@ -220,12 +288,7 @@ function renderCharts(stats) {
                 labels: statusLabels,
                 datasets: [{ data: statusValues, backgroundColor: statusColors, borderRadius: 6 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } }
-            }
+            options: getChartOptions('bar'),
         });
     }
     document.getElementById('status-meta').textContent = `${statusEntries.length} estados`;
@@ -241,7 +304,7 @@ function renderCharts(stats) {
                 labels: causeEntries.map(([k])=>k),
                 datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor: ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316'], borderWidth: 2 }]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 } } } } }
+            options: getChartOptions('doughnut'),
         });
     }
 
@@ -254,9 +317,9 @@ function renderCharts(stats) {
             type: 'line',
             data: {
                 labels: Array.from({length:24},(_,i)=>`${i}:00`),
-                datasets: [{ data: hourData, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.4, fill: true, borderWidth: 2, pointRadius: 3 }]
+                datasets: [{ data: hourData, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.4, fill: true, borderWidth: 2, pointRadius: 4 }]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+            options: getChartOptions('line'),
         });
     }
 
@@ -271,13 +334,7 @@ function renderCharts(stats) {
                 labels: devEntries.map(([k])=>k),
                 datasets: [{ data: devEntries.map(([,v])=>v), backgroundColor: '#8b5cf6', borderRadius: 6 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                indexAxis: 'y',
-                plugins: { legend: { display: false } },
-                scales: { x: { beginAtZero: true } }
-            }
+            options: getChartOptions('bar-h'),
         });
     }
 }
@@ -517,7 +574,7 @@ async function showDeviceDetail(deviceName) {
                 new Chart(ctx, {
                     type: 'bar',
                     data: { labels: Array.from({length:24},(_,i)=>`${i}:00`), datasets: [{ data: hourData, backgroundColor: '#3b82f6', borderRadius: 6 }] },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                    options: getChartOptions('bar'),
                 });
             }
         }, 100);
@@ -887,7 +944,7 @@ function renderHistCharts(stats) {
                 labels: statusEntries.map(([k])=>STATUS_LABELS[k]||k),
                 datasets: [{ data: statusEntries.map(([,v])=>v), backgroundColor: statusEntries.map(([k])=>STATUS_COLORS[k]||'#64748B'), borderRadius: 6 }]
             },
-            options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+            options: getChartOptions('bar'),
         });
     }
 
@@ -900,9 +957,9 @@ function renderHistCharts(stats) {
             type: 'line',
             data: {
                 labels: Array.from({length:24},(_,i)=>`${i}:00`),
-                datasets: [{ data: hourData, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.4, fill:true, borderWidth:2, pointRadius:3 }]
+                datasets: [{ data: hourData, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.4, fill:true, borderWidth:2, pointRadius:4 }]
             },
-            options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+            options: getChartOptions('line'),
         });
     }
 
@@ -917,7 +974,7 @@ function renderHistCharts(stats) {
                 labels: causeEntries.map(([k])=>k),
                 datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor:['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316'], borderWidth:2 }]
             },
-            options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{font:{size:11}}}} }
+            options: getChartOptions('doughnut'),
         });
     } else if (ctxC && !causeEntries.length) {
         const parent = document.getElementById('hist-chart-causes')?.parentElement;
@@ -935,7 +992,7 @@ function renderHistCharts(stats) {
                 labels: devEntries.map(([k])=>k),
                 datasets: [{ data: devEntries.map(([,v])=>v), backgroundColor:'#8b5cf6', borderRadius:6 }]
             },
-            options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true}} }
+            options: getChartOptions('bar-h'),
         });
     }
 }
