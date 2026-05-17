@@ -8,8 +8,10 @@ function findLatestCSV(): ?string {
     if (!is_dir($folder)) return null;
     $latest = null; $latestTs = 0;
     foreach (CSV_PREFIXES as $prefix) {
-        // Buscar tanto .csv como .CSV
-        foreach (array_merge(glob($folder . '/' . $prefix . '*.csv'), glob($folder . '/' . $prefix . '*.CSV')) as $file) {
+        foreach (array_merge(
+            glob($folder . '/' . $prefix . '*.csv') ?: [],
+            glob($folder . '/' . $prefix . '*.CSV') ?: []
+        ) as $file) {
             $ts = filemtime($file);
             if ($ts > $latestTs) { $latestTs = $ts; $latest = $file; }
         }
@@ -26,68 +28,54 @@ function processCSV(string $filepath): ?array {
         logMessage("Archivo no encontrado: $filepath", 'error');
         return null;
     }
-    
+
     $raw = file_get_contents($filepath);
     if ($raw === false) {
         logMessage("No se pudo leer el archivo: $filepath", 'error');
         return null;
     }
 
-    // Remover BOM
     $raw = ltrim($raw, "\xEF\xBB\xBF");
-    
-    // Detectar encoding
+
     $encoding = mb_detect_encoding($raw, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
     if ($encoding && $encoding !== 'UTF-8') {
         $raw = mb_convert_encoding($raw, 'UTF-8', $encoding);
     }
 
-    // Dividir en líneas
     $lines = preg_split('/\r\n|\n|\r/', trim($raw));
     if (count($lines) < 2) {
         logMessage("Archivo con menos de 2 líneas: " . count($lines), 'error');
         return null;
     }
 
-    // DETECTAR DELIMITADOR AUTOMÁTICAMENTE
-    $firstLine = $lines[0];
+    $firstLine  = $lines[0];
     $delimiters = ["\t", ";", ",", "|"];
-    $delimiter = null;
-    $maxCount = 0;
-    
+    $delimiter  = null;
+    $maxCount   = 0;
+
     foreach ($delimiters as $d) {
         $count = substr_count($firstLine, $d);
-        if ($count > $maxCount) {
-            $maxCount = $count;
-            $delimiter = $d;
-        }
+        if ($count > $maxCount) { $maxCount = $count; $delimiter = $d; }
     }
-    
+
     if (!$delimiter) {
         logMessage("No se pudo detectar el delimitador", 'error');
         return null;
     }
-    
+
     logMessage("Delimitador detectado: '" . ($delimiter === "\t" ? "TAB" : $delimiter) . "'");
 
-    // Procesar cabecera
     $header = array_map('trim', str_getcsv($lines[0], $delimiter));
-    // Eliminar posible columna vacía al final
-    if (end($header) === '') {
-        array_pop($header);
-    }
-    
+    if (end($header) === '') array_pop($header);
+
     logMessage("Cabecera encontrada (" . count($header) . " columnas): " . json_encode($header));
-    
-    // Verificar columnas mínimas requeridas
+
     $requiredCols = ['Job', 'Status', 'Date', 'Time'];
-    $missingCols = [];
+    $missingCols  = [];
     foreach ($requiredCols as $col) {
-        if (!in_array($col, $header)) {
-            $missingCols[] = $col;
-        }
+        if (!in_array($col, $header)) $missingCols[] = $col;
     }
-    
+
     if (!empty($missingCols)) {
         logMessage("Columnas requeridas faltantes: " . json_encode($missingCols), 'error');
         return null;
@@ -97,12 +85,11 @@ function processCSV(string $filepath): ?array {
     $records = [];
 
     for ($i = 1; $i < count($lines); $i++) {
-        $line = rtrim($lines[$i], "\r\n;"); // Limpiar caracteres al final
+        $line = rtrim($lines[$i], "\r\n;");
         if ($line === '') continue;
 
         $cols = str_getcsv($line, $delimiter);
-        
-        // Ajustar número de columnas
+
         if (count($cols) > count($header)) {
             $cols = array_slice($cols, 0, count($header));
         } elseif (count($cols) < count($header)) {
@@ -141,7 +128,9 @@ function processCSV(string $filepath): ?array {
             'type'         => trim($row['Type'] ?? ''),
             'dm'           => trim($row['DM'] ?? ''),
             'bcrv'         => trim($row['Bcrv'] ?? ''),
-            'index_val'    => ($indexRaw = trim($row['Index'] ?? '')) !== '' ? (float) str_replace(',', '.', $indexRaw) : null,
+            'index_val'    => ($indexRaw = trim($row['Index'] ?? '')) !== ''
+                ? (float) str_replace(',', '.', $indexRaw)
+                : null,
         ];
     }
 
@@ -169,9 +158,7 @@ function calculateStats(array $records): array {
         if ($hour >= 0 && $hour < 24) $byHour[$hour]++;
 
         $dev = trim($r['device'] ?? '');
-        if ($dev !== '') {
-            $byDevice[$dev] = ($byDevice[$dev] ?? 0) + 1;
-        }
+        if ($dev !== '') $byDevice[$dev] = ($byDevice[$dev] ?? 0) + 1;
 
         $usr = $r['user'] ?: 'Desconocido';
         $byUser[$usr] = ($byUser[$usr] ?? 0) + 1;
@@ -183,9 +170,7 @@ function calculateStats(array $records): array {
             $jobsBrea[$r['job']] = true;
             $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
             $byCause[$cause] = ($byCause[$cause] ?? 0) + 1;
-            if ($dev !== '') {
-                $breaDev[$dev] = ($breaDev[$dev] ?? 0) + 1;
-            }
+            if ($dev !== '') $breaDev[$dev] = ($breaDev[$dev] ?? 0) + 1;
             $breaUser[$usr]  = ($breaUser[$usr]  ?? 0) + 1;
         }
     }
@@ -222,9 +207,7 @@ function getDeviceStats(array $records): array {
     $stats = []; $jobs = [];
     foreach ($records as $r) {
         $dev = trim($r['device'] ?? '');
-        if ($dev === '') {
-            continue;
-        }
+        if ($dev === '') continue;
         if (!isset($stats[$dev])) {
             $stats[$dev] = ['name' => $dev, 'device' => $dev, 'total' => 0, 'jobs' => 0, 'brea' => 0, 'breakages' => 0, 'rate' => 0];
             $jobs[$dev]  = [];
@@ -253,9 +236,12 @@ function getDeviceDetails(array $records, string $deviceName): array {
     }
     arsort($jobs);
     return [
-        'records' => $filtered, 'total_records' => count($filtered),
-        'total_jobs' => count($jobs), 'breakages' => $brea,
-        'hour_distribution' => $hourDist, 'jobs' => $jobs,
+        'records'            => $filtered,
+        'total_records'      => count($filtered),
+        'total_jobs'         => count($jobs),
+        'breakages'          => $brea,
+        'hour_distribution'  => $hourDist,
+        'jobs'               => $jobs,
     ];
 }
 
@@ -282,6 +268,28 @@ function saveCache(array $data): bool {
     return file_put_contents(CACHE_FILE, $json, LOCK_EX) !== false;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX Bug 2: Prevenir backups duplicados
+// Antes: comparaba filemtime del CSV vs filemtime del último backup.
+// El problema es que cuando se sube un nuevo CSV, el backup se crea con
+// filemtime ≈ ahora, pero en la próxima request el CSV también tiene
+// filemtime ≈ ahora → volvía a crear un backup innecesario.
+// Solución: guardar en un archivo de estado la marca de tiempo del último
+// CSV procesado. Solo se hace backup si el CSV cambió desde ese registro.
+// ─────────────────────────────────────────────────────────────────────────────
+function getLastBackupTimestamp(): int {
+    $stateFile = __DIR__ . '/../cache/last_backup.txt';
+    if (!file_exists($stateFile)) return 0;
+    return (int) trim(file_get_contents($stateFile));
+}
+
+function saveLastBackupTimestamp(int $ts): void {
+    $stateFile = __DIR__ . '/../cache/last_backup.txt';
+    $dir = dirname($stateFile);
+    if (!is_dir($dir)) mkdir($dir, 0777, true);
+    file_put_contents($stateFile, (string)$ts, LOCK_EX);
+}
+
 function getLastCSVBackup(string $filepath): ?string {
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) return null;
@@ -299,16 +307,33 @@ function hasDailyCSVBackup(string $filepath, DateTimeInterface $date): bool {
 
 function ensureCSVBackups(string $filepath): void {
     if (!file_exists($filepath)) return;
+
     $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) mkdir($dir, 0777, true);
-
-    $now = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
-    $lastBackup = getLastCSVBackup($filepath);
-
-    if (!$lastBackup || filemtime($filepath) > filemtime($lastBackup)) {
-        backupCSV($filepath);
+    // FIX Bug 3: Verificar permisos de escritura antes de intentar crear backups
+    if (!is_dir($dir)) {
+        if (!@mkdir($dir, 0777, true)) {
+            logMessage("No se pudo crear BACKUP_FOLDER: $dir", 'error');
+            return;
+        }
+    }
+    if (!is_writable($dir)) {
+        logMessage("BACKUP_FOLDER no tiene permisos de escritura: $dir", 'error');
+        return;
     }
 
+    $now    = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
+    $csvMts = filemtime($filepath);
+
+    // FIX Bug 2: Usar timestamp persistido en lugar de comparar con filemtime del backup
+    $lastBackupTs = getLastBackupTimestamp();
+    if ($csvMts > $lastBackupTs) {
+        backupCSV($filepath);
+        saveLastBackupTimestamp($csvMts);
+    }
+
+    // FIX Bug 4: El backup diario igual depende de esta función cuando no hay cron,
+    // pero ahora supervisord.conf lo llama cada 5 min vía monitor.php.
+    // Esta lógica queda como fallback.
     if ($now->format('Hi') >= '2355' && $now->format('Hi') <= '2359' && !hasDailyCSVBackup($filepath, $now)) {
         backupCSV($filepath, $now->format('Ymd_2359'));
     }
@@ -317,10 +342,26 @@ function ensureCSVBackups(string $filepath): void {
 function backupCSV(string $filepath, ?string $timestamp = null): void {
     if (!file_exists($filepath)) return;
     $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) mkdir($dir, 0777, true);
+    if (!is_dir($dir)) {
+        if (!@mkdir($dir, 0777, true)) {
+            logMessage("backupCSV: no se pudo crear directorio $dir", 'error');
+            return;
+        }
+    }
     $stamp = $timestamp ?? date('Ymd_His');
-    $dest = $dir . '/BACKUP_' . $stamp . '_' . basename($filepath);
-    copy($filepath, $dest);
+    $dest  = $dir . '/BACKUP_' . $stamp . '_' . basename($filepath);
+
+    // Evitar sobrescribir un backup que ya existe con el mismo timestamp
+    if (file_exists($dest)) {
+        logMessage("Backup ya existe, omitido: " . basename($dest));
+        return;
+    }
+
+    if (!copy($filepath, $dest)) {
+        logMessage("backupCSV: falló copy() hacia $dest", 'error');
+        return;
+    }
+
     logMessage("Respaldo creado: " . basename($dest));
 }
 
@@ -334,7 +375,7 @@ function listBackups(): array {
             'filename' => basename($f),
             'name'     => basename($f),
             'size'     => filesize($f),
-            'modified' => date('Y-m-d H:i:s', filemtime($f))
+            'modified' => date('Y-m-d H:i:s', filemtime($f)),
         ];
     }
     usort($list, fn($a, $b) => strcmp($b['modified'], $a['modified']));
