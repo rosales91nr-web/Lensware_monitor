@@ -186,21 +186,9 @@ try {
             // Filtro de fecha si se especifica
             $dateFilter = trim($_GET['date_filter'] ?? '');
             if ($dateFilter !== '') {
-                // date_raw puede venir como DD/MM/YYYY o YYYY-MM-DD según el CSV
                 $records = array_values(array_filter($records, function($r) use ($dateFilter) {
-                    // Normalizar date_raw a YYYY-MM-DD para comparar
-                    $d = $r['date_raw'];
-                    // Si tiene formato DD/MM/YYYY
-                    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $d, $m)) {
-                        $normalized = "{$m[3]}-{$m[2]}-{$m[1]}";
-                    } elseif (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d)) {
-                        $normalized = $d;
-                    } elseif (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $d, $m)) {
-                        $normalized = "{$m[3]}-{$m[2]}-{$m[1]}";
-                    } else {
-                        $normalized = $d;
-                    }
-                    return $normalized === $dateFilter;
+                    $normalized = normalizeRecordDate($r['date_raw'] ?? '');
+                    return $normalized !== null && $normalized === $dateFilter;
                 }));
             }
 
@@ -211,13 +199,22 @@ try {
                 $from = $hourFrom !== '' ? (int)$hourFrom : 0;
                 $to   = $hourTo   !== '' ? (int)$hourTo   : 23;
                 $records = array_values(array_filter($records, function($r) use ($from, $to) {
-                    $hour = (int)substr($r['time_raw'], 0, 2);
-                    return $hour >= $from && $hour <= $to;
+                    return recordHour($r['time_raw'] ?? '') >= $from
+                        && recordHour($r['time_raw'] ?? '') <= $to;
                 }));
             }
 
             if (empty($records)) {
-                respondJson(['success' => false, 'error' => 'Sin registros para ese filtro'], 404);
+                $totalInFile = count($data['records']);
+                $sampleDate  = $totalInFile > 0
+                    ? ($data['records'][0]['date_raw'] ?? 'vacío')
+                    : 'vacío';
+                respondJson([
+                    'success' => false,
+                    'error'   => 'Sin registros para ese filtro. '
+                        . "El CSV usa fechas como «{$sampleDate}». "
+                        . 'Prueba sin rango de hora o elige otro backup.',
+                ], 404);
             }
 
             $result = [

@@ -139,6 +139,69 @@ function processCSV(string $filepath): ?array {
     return ['records' => $records, 'filename' => basename($filepath)];
 }
 
+/**
+ * Normaliza la columna Date del CSV a YYYY-MM-DD.
+ * Lensware puede exportar: YYYYMMDD, YYYY-MM-DD, DD/MM/YYYY, M/D/YYYY, DD-MM-YYYY, etc.
+ */
+function normalizeRecordDate(string $dateRaw): ?string {
+    $d = trim($dateRaw);
+    if ($d === '') return null;
+
+    // YYYY-MM-DD o YYYY-MM-DD HH:MM:SS
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $d, $m)) {
+        return sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]);
+    }
+
+    if (preg_match('/^(\d{4})(\d{2})(\d{2})$/', $d, $m)) {
+        return sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]);
+    }
+
+    if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $d, $m)) {
+        $a = (int)$m[1];
+        $b = (int)$m[2];
+        $year = (int)$m[3];
+        // Si uno de los valores es > 12, es el día
+        if ($a > 12 && $b <= 12) {
+            return sprintf('%04d-%02d-%02d', $year, $b, $a);
+        }
+        if ($b > 12 && $a <= 12) {
+            return sprintf('%04d-%02d-%02d', $year, $a, $b);
+        }
+        // Ambiguo: Costa Rica usa DD/MM/YYYY
+        return sprintf('%04d-%02d-%02d', $year, $b, $a);
+    }
+
+    if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/', $d, $m)) {
+        $year = (int)$m[3] + ($m[3] < 70 ? 2000 : 1900);
+        $a = (int)$m[1];
+        $b = (int)$m[2];
+        if ($a > 12 && $b <= 12) {
+            return sprintf('%04d-%02d-%02d', $year, $b, $a);
+        }
+        if ($b > 12 && $a <= 12) {
+            return sprintf('%04d-%02d-%02d', $year, $a, $b);
+        }
+        return sprintf('%04d-%02d-%02d', $year, $b, $a);
+    }
+
+    $ts = strtotime($d);
+    if ($ts !== false) {
+        return date('Y-m-d', $ts);
+    }
+
+    return null;
+}
+
+/** Extrae la hora (0-23) de la columna Time del CSV. */
+function recordHour(string $timeRaw): int {
+    $t = trim($timeRaw);
+    if (preg_match('/^(\d{1,2}):/', $t, $m)) {
+        $h = (int)$m[1];
+        return ($h >= 0 && $h <= 23) ? $h : 0;
+    }
+    return (int)substr($t, 0, 2);
+}
+
 function calculateStats(array $records): array {
     $total = count($records);
     $byStatus = []; $byHour = array_fill(0, 24, 0);
@@ -150,7 +213,7 @@ function calculateStats(array $records): array {
         $s = $r['status'];
         $byStatus[$s] = ($byStatus[$s] ?? 0) + 1;
 
-        $hour = (int)substr($r['time_raw'], 0, 2);
+        $hour = recordHour($r['time_raw']);
         if ($hour >= 0 && $hour < 24) $byHour[$hour]++;
 
         $dev = trim($r['device'] ?? '');
@@ -224,7 +287,7 @@ function getDeviceDetails(array $records, string $deviceName): array {
     $filtered = array_values(array_filter($records, fn($r) => $r['device'] === $deviceName));
     $hourDist = array_fill(0, 24, 0); $jobs = []; $brea = 0;
     foreach ($filtered as $r) {
-        $hour = (int)substr($r['time_raw'], 0, 2);
+        $hour = recordHour($r['time_raw']);
         if ($hour >= 0 && $hour < 24) $hourDist[$hour]++;
         if (!isset($jobs[$r['job']])) $jobs[$r['job']] = ['total' => 0, 'brea' => 0];
         $jobs[$r['job']]['total']++;

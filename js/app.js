@@ -726,8 +726,12 @@ async function loadHistData() {
     if (hourFrom !== '') url += `&hour_from=${encodeURIComponent(hourFrom)}`;
     if (hourTo   !== '') url += `&hour_to=${encodeURIComponent(hourTo)}`;
 
-    // Inferir fecha del día seleccionado para filtrar (en backups que cubren varios días)
-    if (histState.selectedDate) {
+    // Solo filtrar por fecha si el backup puede contener otro día (nombre distinto al chip)
+    const backupDayMatch = histState.selectedFile?.match(/BACKUP_(\d{4})(\d{2})(\d{2})_/);
+    const backupDay = backupDayMatch
+        ? `${backupDayMatch[1]}-${backupDayMatch[2]}-${backupDayMatch[3]}`
+        : null;
+    if (histState.selectedDate && backupDay && backupDay !== histState.selectedDate) {
         url += `&date_filter=${encodeURIComponent(histState.selectedDate)}`;
     }
 
