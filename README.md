@@ -118,8 +118,11 @@ lensware-pro/
 ## Notas importantes
 
 - **Persistencia**: Railway reinicia el contenedor y borra `uploads/`, `cache/`, `backups/`.  
-  Para persistir datos, añade un **Railway Volume** montado en `/var/www/html/uploads`.  
-  En Railway → tu servicio → **Volumes** → Add Volume → mount path: `/var/www/html/uploads`
+  Para persistir datos, añade uno o dos **Railway Volumes** montados en:  
+  - `/var/www/html/uploads` para los CSVs entrantes  
+  - `/var/www/html/backups` para los archivos de respaldo  
+  En Railway → tu servicio → **Volumes** → Add Volume → mount path: `/var/www/html/uploads`  
+  Repite para `/var/www/html/backups` o configura `BACKUP_FOLDER` si montas en otra ruta.
 
 - **Logs**: disponibles en Railway → tu servicio → **Logs**
 

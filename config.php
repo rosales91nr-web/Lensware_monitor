@@ -7,8 +7,8 @@
 // o montando un volumen en Railway con la ruta /var/www/html/uploads
 // ---------------------------------------------------------------------------
 date_default_timezone_set('America/Costa_Rica');
-define('WATCH_FOLDER',  __DIR__ . '/uploads');
-define('BACKUP_FOLDER', __DIR__ . '/backups');
+define('WATCH_FOLDER',  getenv('WATCH_FOLDER') ?: __DIR__ . '/uploads');
+define('BACKUP_FOLDER', getenv('BACKUP_FOLDER') ?: __DIR__ . '/backups');
 define('CSV_PREFIXES',  ['UNI_PROD_ALL_ACT_', 'UNI_PROD_SIMPLE_ACT_']);
 
 // Caché JSON
