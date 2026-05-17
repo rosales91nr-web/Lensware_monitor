@@ -372,6 +372,7 @@
             padding: 18px;
             box-shadow: 0 1px 2px rgba(0,0,0,0.03);
             border: 1px solid #e2e8f0;
+            overflow: hidden;
         }
         .chart-header {
             display: flex;

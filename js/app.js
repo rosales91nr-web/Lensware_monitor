@@ -101,10 +101,19 @@ function setupEventListeners() {
 
     // Cerrar modales
     document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', () => btn.closest('.modal').classList.remove('active'));
+        btn.addEventListener('click', () => {
+            const modal = btn.closest('.modal');
+            if (modal?.id === 'modal-device') destroyDeviceHourChart();
+            modal?.classList.remove('active');
+        });
     });
     document.querySelectorAll('.modal').forEach(modal => {
-        modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+        modal.addEventListener('click', e => {
+            if (e.target === modal) {
+                if (modal.id === 'modal-device') destroyDeviceHourChart();
+                modal.classList.remove('active');
+            }
+        });
     });
 
     // ── Histórico ──
@@ -156,7 +165,7 @@ function switchTab(tabId) {
 
 function refreshDashboardCharts() {
     [window.statusChart, window.causesChart, window.hourChart, window.devicesChart, window.topJobsBreaChart].forEach(c => {
-        if (c) { c.resize?.(); c.update?.(); }
+        if (c?.canvas?.isConnected) c.resize();
     });
 }
 
@@ -771,6 +780,17 @@ async function globalSearch(q) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Device detail modal
 // ─────────────────────────────────────────────────────────────────────────────
+function destroyDeviceHourChart() {
+    if (window._deviceChartTimer) {
+        clearTimeout(window._deviceChartTimer);
+        window._deviceChartTimer = null;
+    }
+    if (window.deviceHourChart) {
+        window.deviceHourChart.destroy();
+        window.deviceHourChart = null;
+    }
+}
+
 async function showDeviceDetail(deviceName) {
     try {
         const r = await fetch(`api.php?action=device&name=${encodeURIComponent(deviceName)}`);
@@ -778,6 +798,7 @@ async function showDeviceDetail(deviceName) {
         if (!result.success) return;
         const data = result.details;
         const hourData = data.hour_distribution || Array(24).fill(0);
+        destroyDeviceHourChart();
         const modal = document.getElementById('modal-device');
         document.getElementById('modal-device-title').textContent = `📟 ${deviceName}`;
         document.getElementById('device-details').innerHTML = `
@@ -787,7 +808,9 @@ async function showDeviceDetail(deviceName) {
             </div>
             <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;">
                 <h4 style="font-size:13px;font-weight:700;margin-bottom:12px;">Actividad por hora</h4>
-                <canvas id="device-hour-chart" height="160" style="width:100%;height:160px;"></canvas>
+                <div style="position:relative;height:160px;width:100%;overflow:hidden;">
+                    <canvas id="device-hour-chart"></canvas>
+                </div>
             </div>
             <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;overflow:auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:300px;">
@@ -807,15 +830,17 @@ async function showDeviceDetail(deviceName) {
                 </table>
             </div>`;
         modal.classList.add('active');
-        setTimeout(() => {
-            const ctx = document.getElementById('device-hour-chart')?.getContext('2d');
-            if (ctx) {
-                new Chart(ctx, {
-                    type: 'bar',
-                    data: { labels: Array.from({length:24},(_,i)=>`${i}:00`), datasets: [{ data: hourData, backgroundColor: '#3b82f6', borderRadius: 6 }] },
-                    options: getChartOptions('bar'),
-                });
-            }
+        window._deviceChartTimer = setTimeout(() => {
+            window._deviceChartTimer = null;
+            if (!modal.classList.contains('active')) return;
+            const canvas = document.getElementById('device-hour-chart');
+            if (!canvas) return;
+            destroyDeviceHourChart();
+            window.deviceHourChart = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: { labels: Array.from({length:24},(_,i)=>`${i}:00`), datasets: [{ data: hourData, backgroundColor: '#3b82f6', borderRadius: 6 }] },
+                options: getChartOptions('bar'),
+            });
         }, 100);
     } catch(e) { console.error(e); }
 }
