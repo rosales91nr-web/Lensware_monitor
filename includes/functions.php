@@ -330,7 +330,12 @@ function listBackups(): array {
     $files = glob($dir . '/BACKUP_*.csv') ?: [];
     $list  = [];
     foreach ($files as $f) {
-        $list[] = ['filename' => basename($f), 'size' => filesize($f), 'modified' => date('Y-m-d H:i:s', filemtime($f))];
+        $list[] = [
+            'filename' => basename($f),
+            'name'     => basename($f),
+            'size'     => filesize($f),
+            'modified' => date('Y-m-d H:i:s', filemtime($f))
+        ];
     }
     usort($list, fn($a, $b) => strcmp($b['modified'], $a['modified']));
     return $list;

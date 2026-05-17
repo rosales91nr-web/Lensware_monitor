@@ -945,7 +945,7 @@ async function showBackups() {
             const backups = result.backups;
             const container = document.getElementById('backups-list');
             
-            if (backups.length === 0) {
+            if (!Array.isArray(backups) || backups.length === 0) {
                 container.innerHTML = '<div style="text-align:center; padding:60px;"><i class="fas fa-archive" style="font-size:48px; color:#cbd5e1;"></i><p style="margin-top:16px;">No hay respaldos guardados</p></div>';
             } else {
                 container.innerHTML = `
@@ -958,13 +958,16 @@ async function showBackups() {
                             </tr>
                         </thead>
                         <tbody>
-                            ${backups.map(b => `
+                            ${backups.map(b => {
+                                const filename = b.filename || b.name || '';
+                                return `
                                 <tr style="border-bottom:1px solid #e2e8f0;">
-                                    <td style="padding:12px; font-family:monospace; font-size:11px;">${escapeHtml(b.name)}</td>
+                                    <td style="padding:12px; font-family:monospace; font-size:11px;">${escapeHtml(filename)}</td>
                                     <td style="padding:12px;">${formatFileSize(b.size)}</td>
                                     <td style="padding:12px;">${escapeHtml(b.modified)}</td>
                                 </tr>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </tbody>
                     </table>
                 `;
