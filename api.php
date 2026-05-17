@@ -13,6 +13,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+function respondJson(array $data, int $statusCode = 200): void {
+    if (ob_get_length() !== false) {
+        ob_clean();
+    }
+    http_response_code($statusCode);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/functions.php';
 
@@ -24,7 +33,7 @@ try {
         // ------------------------------------------------------------------ //
         case 'status':
             $latestCSV = findLatestCSV();
-            echo json_encode([
+            respondJson([
                 'success' => true,
                 'data' => [
                     'monitor_active' => true,
@@ -33,28 +42,24 @@ try {
                     'environment'    => getenv('RAILWAY_ENVIRONMENT') ?: 'local'
                 ]
             ]);
-            break;
 
         // ------------------------------------------------------------------ //
         case 'data':
             $cache = readCache();
             if ($cache && !empty($cache['records'])) {
-                echo json_encode(['success' => true, 'data' => $cache]);
-                break;
+                respondJson(['success' => true, 'data' => $cache]);
             }
 
             $latestCSV = findLatestCSV();
             if (!$latestCSV) {
-                echo json_encode(['success' => false, 'error' => 'No se encontró archivo CSV en uploads/']);
-                break;
+                respondJson(['success' => false, 'error' => 'No se encontró archivo CSV en uploads/'], 404);
             }
 
             ensureCSVBackups($latestCSV);
 
             $data = processCSV($latestCSV);
             if (!$data || empty($data['records'])) {
-                echo json_encode(['success' => false, 'error' => 'Error al procesar CSV']);
-                break;
+                respondJson(['success' => false, 'error' => 'Error al procesar CSV'], 500);
             }
 
             $result = [
@@ -67,36 +72,31 @@ try {
             ];
 
             saveCache($result);
-            echo json_encode(['success' => true, 'data' => $result]);
-            break;
+            respondJson(['success' => true, 'data' => $result]);
 
         // ------------------------------------------------------------------ //
         case 'refresh':
             if (file_exists(CACHE_FILE)) unlink(CACHE_FILE);
             $latestCSV = findLatestCSV();
             if ($latestCSV) backupCSV($latestCSV);
-            echo json_encode(['success' => true, 'message' => 'Caché limpiado']);
-            break;
+            respondJson(['success' => true, 'message' => 'Caché limpiado']);
 
         // ------------------------------------------------------------------ //
         case 'device':
             $deviceName = trim($_GET['name'] ?? '');
             if ($deviceName === '') {
-                echo json_encode(['success' => false, 'error' => 'Nombre requerido']);
-                break;
+                respondJson(['success' => false, 'error' => 'Nombre requerido'], 400);
             }
             $cache = readCache();
             if (!$cache || empty($cache['records'])) {
                 echo json_encode(['success' => false, 'error' => 'No hay datos']);
                 break;
             }
-            echo json_encode(['success' => true, 'details' => getDeviceDetails($cache['records'], $deviceName)]);
-            break;
+            respondJson(['success' => true, 'details' => getDeviceDetails($cache['records'], $deviceName)]);
 
         // ------------------------------------------------------------------ //
         case 'backups':
-            echo json_encode(['success' => true, 'backups' => listBackups()]);
-            break;
+            respondJson(['success' => true, 'backups' => listBackups()]);
 
         // ------------------------------------------------------------------ //
         // Subida de CSV desde Windows (script bat/powershell en el servidor Lensware)
@@ -107,8 +107,7 @@ try {
         case 'upload_csv':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 http_response_code(405);
-                echo json_encode(['success' => false, 'error' => 'Método no permitido']);
-                break;
+                respondJson(['success' => false, 'error' => 'Método no permitido'], 405);
             }
 
             // Si UPLOAD_SECRET es 'changeme' o vacío, no se requiere auth (uso interno).
@@ -118,14 +117,12 @@ try {
                 $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
                 if ($secret !== UPLOAD_SECRET) {
                     http_response_code(403);
-                    echo json_encode(['success' => false, 'error' => 'No autorizado']);
-                    break;
+                    respondJson(['success' => false, 'error' => 'No autorizado'], 403);
                 }
             }
 
             if (empty($_FILES['csv_file'])) {
-                echo json_encode(['success' => false, 'error' => 'No se recibió archivo']);
-                break;
+                respondJson(['success' => false, 'error' => 'No se recibió archivo'], 400);
             }
 
             $file     = $_FILES['csv_file'];
@@ -137,8 +134,7 @@ try {
                 if (str_starts_with($origName, $prefix)) { $validPrefix = true; break; }
             }
             if (!$validPrefix || strtolower(pathinfo($origName, PATHINFO_EXTENSION)) !== 'csv') {
-                echo json_encode(['success' => false, 'error' => 'Archivo no válido: ' . $origName]);
-                break;
+                respondJson(['success' => false, 'error' => 'Archivo no válido: ' . $origName], 400);
             }
 
             $dest = WATCH_FOLDER . '/' . $origName;
@@ -149,16 +145,14 @@ try {
             }
 
             if (!move_uploaded_file($file['tmp_name'], $dest)) {
-                echo json_encode(['success' => false, 'error' => 'Error al guardar archivo']);
-                break;
+                respondJson(['success' => false, 'error' => 'Error al guardar archivo'], 500);
             }
 
             // Invalidar caché para que se regenere con el nuevo CSV
             if (file_exists(CACHE_FILE)) unlink(CACHE_FILE);
 
             logMessage("CSV subido: $origName");
-            echo json_encode(['success' => true, 'message' => "CSV recibido: $origName"]);
-            break;
+            respondJson(['success' => true, 'message' => "CSV recibido: $origName"]);
 
         // ------------------------------------------------------------------ //
         case 'export':
@@ -203,11 +197,9 @@ try {
 
         // ------------------------------------------------------------------ //
         default:
-            http_response_code(400);
-            echo json_encode(['success' => false, 'error' => 'Acción no válida: ' . htmlspecialchars($action)]);
-            break;
+            respondJson(['success' => false, 'error' => 'Acción no válida: ' . htmlspecialchars($action)], 400);
     }
 } catch (Exception $e) {
     logMessage($e->getMessage(), 'error');
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    respondJson(['success' => false, 'error' => $e->getMessage()], 500);
 }
