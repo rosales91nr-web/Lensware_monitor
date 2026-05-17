@@ -23,43 +23,115 @@
 
         .app-container { display: flex; min-height: 100vh; }
 
-        /* ========== SIDEBAR ========== */
+        :root {
+            --sidebar-w-collapsed: 72px;
+            --sidebar-w-expanded: 260px;
+        }
+
+        /* ========== SIDEBAR (colapsado → expande al hover) ========== */
         .sidebar {
-            width: 260px;
+            width: var(--sidebar-w-collapsed);
             background: #0f172a;
             position: fixed;
             height: 100vh;
             display: flex;
             flex-direction: column;
-            z-index: 100;
+            z-index: 200;
+            overflow: hidden;
+            transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                        box-shadow 0.28s ease;
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
         }
+        .sidebar:hover {
+            width: var(--sidebar-w-expanded);
+            box-shadow: 8px 0 32px rgba(0, 0, 0, 0.22);
+        }
+
         .logo {
-            padding: 24px 20px;
+            padding: 20px 16px;
             border-bottom: 1px solid #1e293b;
             display: flex;
             align-items: center;
             gap: 10px;
+            min-height: 72px;
+            flex-shrink: 0;
         }
-        .logo i { font-size: 28px; color: #3b82f6; }
-        .logo span { font-size: 18px; font-weight: 700; color: white; }
-        .logo .pro { background: #3b82f6; padding: 2px 8px; border-radius: 20px; font-size: 10px; margin-left: 6px; }
-        .logo small { font-size: 9px; color: #64748b; margin-left: auto; }
+        .logo i {
+            font-size: 26px;
+            color: #3b82f6;
+            flex-shrink: 0;
+            width: 40px;
+            text-align: center;
+        }
+        .logo-brand {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            transition: opacity 0.22s ease 0.04s, width 0.28s ease;
+        }
+        .sidebar:hover .logo-brand {
+            opacity: 1;
+            width: auto;
+            flex: 1;
+        }
+        .logo span { font-size: 16px; font-weight: 700; color: white; line-height: 1.2; }
+        .logo .pro {
+            background: #3b82f6;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 9px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+        .logo small { font-size: 9px; color: #64748b; }
 
-        .nav-menu { flex: 1; padding: 20px 12px; overflow-y: auto; }
+        .nav-menu {
+            flex: 1;
+            padding: 16px 10px;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
         .nav-item {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 10px 14px;
+            padding: 11px 14px;
             color: #94a3b8;
             text-decoration: none;
             border-radius: 10px;
             margin-bottom: 4px;
-            transition: all 0.2s;
+            transition: background 0.2s, color 0.2s;
             font-weight: 500;
             font-size: 13px;
+            position: relative;
+            white-space: nowrap;
         }
-        .nav-item i { width: 20px; font-size: 16px; }
+        .nav-item i {
+            width: 24px;
+            font-size: 17px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .nav-item .nav-label {
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+            transition: opacity 0.2s ease 0.05s, width 0.28s ease;
+        }
+        .sidebar:hover .nav-item .nav-label {
+            opacity: 1;
+            width: auto;
+            flex: 1;
+        }
+        .sidebar:not(:hover) .nav-item {
+            justify-content: center;
+            padding-left: 12px;
+            padding-right: 12px;
+        }
         .nav-item:hover { background: #1e293b; color: white; }
         .nav-item.active { background: #3b82f6; color: white; }
         .nav-item .badge {
@@ -69,7 +141,29 @@
             padding: 2px 7px;
             border-radius: 20px;
             margin-left: auto;
+            flex-shrink: 0;
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+            transition: opacity 0.2s, width 0.28s;
         }
+        .sidebar:hover .nav-item .badge {
+            opacity: 1;
+            width: auto;
+        }
+        .sidebar:not(:hover) .nav-item[data-tab="breakages"] .badge {
+            position: absolute;
+            top: 8px;
+            left: 28px;
+            width: 8px;
+            height: 8px;
+            min-width: 8px;
+            padding: 0;
+            font-size: 0;
+            opacity: 1;
+            border-radius: 50%;
+        }
+
         .nav-section-label {
             font-size: 10px;
             font-weight: 700;
@@ -77,9 +171,22 @@
             color: #475569;
             letter-spacing: 1px;
             padding: 12px 14px 6px;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: max-height 0.25s, opacity 0.2s, padding 0.25s;
+        }
+        .sidebar:hover .nav-section-label {
+            max-height: 40px;
+            opacity: 1;
+            padding: 12px 14px 6px;
         }
 
-        .sidebar-footer { padding: 16px; border-top: 1px solid #1e293b; }
+        .sidebar-footer {
+            padding: 12px 10px 16px;
+            border-top: 1px solid #1e293b;
+            flex-shrink: 0;
+        }
         .monitor-status {
             background: #1e293b;
             border-radius: 10px;
@@ -87,12 +194,27 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
+            justify-content: center;
+            min-height: 40px;
         }
-        .monitor-status i { font-size: 8px; }
+        .sidebar:hover .monitor-status { justify-content: flex-start; }
+        .monitor-status i { font-size: 8px; flex-shrink: 0; }
         .monitor-status .online { color: #10b981; }
         .monitor-status .offline { color: #ef4444; }
-        .monitor-status span { font-size: 12px; color: #cbd5e1; }
+        .monitor-status .status-label {
+            font-size: 12px;
+            color: #cbd5e1;
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            transition: opacity 0.2s, width 0.28s;
+        }
+        .sidebar:hover .monitor-status .status-label {
+            opacity: 1;
+            width: auto;
+        }
 
         .btn-refresh {
             width: 100%;
@@ -108,12 +230,59 @@
             justify-content: center;
             gap: 8px;
             font-size: 12px;
-            transition: all 0.2s;
+            transition: background 0.2s;
+        }
+        .btn-refresh .btn-label {
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            transition: opacity 0.2s, width 0.28s;
+        }
+        .sidebar:hover .btn-refresh .btn-label {
+            opacity: 1;
+            width: auto;
         }
         .btn-refresh:hover { background: #2563eb; }
 
         /* ========== MAIN CONTENT ========== */
-        .main-content { flex: 1; margin-left: 260px; padding: 20px 28px; min-height: 100vh; }
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-w-collapsed);
+            padding: 20px 28px 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .sidebar:hover ~ .main-content {
+            margin-left: var(--sidebar-w-expanded);
+        }
+
+        /* ========== FIRMA ========== */
+        .firma {
+            margin-top: auto;
+            text-align: center;
+            padding: 28px 20px 32px;
+            border-top: 1px solid #e2e8f0;
+            color: #64748b;
+            font-size: 13px;
+            font-weight: 500;
+            background: linear-gradient(180deg, transparent 0%, #f8fafc 100%);
+        }
+        .firma p {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #94a3b8;
+            font-weight: 400;
+        }
+        .main-body { flex: 1; width: 100%; }
+
+        @media (max-width: 768px) {
+            .main-content { padding: 16px 14px 0; }
+            .sidebar:hover ~ .main-content { margin-left: var(--sidebar-w-collapsed); }
+            .sidebar:hover { width: var(--sidebar-w-expanded); position: fixed; }
+        }
 
         .top-bar {
             background: white;
@@ -729,35 +898,38 @@
     <aside class="sidebar">
         <div class="logo">
             <i class="fas fa-glasses"></i>
-            <span>LENSWARE<span class="pro">PRO</span></span>
-            <small>v9.1</small>
+            <div class="logo-brand">
+                <span>LENSWARE<span class="pro">MONITOR PRO</span></span>
+                <small>v1.0</small>
+            </div>
         </div>
         <nav class="nav-menu">
             <div class="nav-section-label">En Vivo</div>
-            <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-chart-pie"></i><span>Dashboard</span></a>
-            <a href="#" class="nav-item" data-tab="breakages"><i class="fas fa-bug"></i><span>Quiebras</span><span class="badge" id="brea-badge">0</span></a>
-            <a href="#" class="nav-item" data-tab="activity"><i class="fas fa-history"></i><span>Actividad</span></a>
-            <a href="#" class="nav-item" data-tab="devices"><i class="fas fa-microchip"></i><span>Dispositivos</span></a>
-            <a href="#" class="nav-item" data-tab="operators"><i class="fas fa-users"></i><span>Operadores</span></a>
-            <a href="#" class="nav-item" data-tab="search"><i class="fas fa-search"></i><span>Buscar</span></a>
+            <a href="#" class="nav-item active" data-tab="dashboard" title="Dashboard"><i class="fas fa-chart-pie"></i><span class="nav-label">Dashboard</span></a>
+            <a href="#" class="nav-item" data-tab="breakages" title="Quiebras"><i class="fas fa-bug"></i><span class="nav-label">Quiebras</span><span class="badge" id="brea-badge">0</span></a>
+            <a href="#" class="nav-item" data-tab="activity" title="Actividad"><i class="fas fa-history"></i><span class="nav-label">Actividad</span></a>
+            <a href="#" class="nav-item" data-tab="devices" title="Dispositivos"><i class="fas fa-microchip"></i><span class="nav-label">Dispositivos</span></a>
+            <a href="#" class="nav-item" data-tab="operators" title="Operadores"><i class="fas fa-users"></i><span class="nav-label">Operadores</span></a>
+            <a href="#" class="nav-item" data-tab="search" title="Buscar"><i class="fas fa-search"></i><span class="nav-label">Buscar</span></a>
             <div class="nav-section-label" style="margin-top:8px;">Análisis</div>
-            <a href="#" class="nav-item" data-tab="historico"><i class="fas fa-calendar-alt"></i><span>Histórico</span></a>
-            <a href="#" class="nav-item" data-tab="upload"><i class="fas fa-upload"></i><span>Importar CSV</span></a>
+            <a href="#" class="nav-item" data-tab="historico" title="Histórico"><i class="fas fa-calendar-alt"></i><span class="nav-label">Histórico</span></a>
+            <a href="#" class="nav-item" data-tab="upload" title="Importar CSV"><i class="fas fa-upload"></i><span class="nav-label">Importar CSV</span></a>
         </nav>
         <div class="sidebar-footer">
             <div class="monitor-status" id="monitor-status">
                 <i class="fas fa-circle" id="status-dot"></i>
-                <span id="status-text">Conectando...</span>
+                <span id="status-text" class="status-label">Conectando...</span>
             </div>
-            <button class="btn-refresh" id="btn-refresh">
+            <button class="btn-refresh" id="btn-refresh" title="Actualizar datos">
                 <i class="fas fa-sync-alt"></i>
-                <span>Actualizar</span>
+                <span class="btn-label">Actualizar</span>
             </button>
         </div>
     </aside>
 
     <!-- Main Content -->
     <main class="main-content">
+        <div class="main-body">
         <!-- Top Bar -->
         <header class="top-bar">
             <div class="page-title">
@@ -996,6 +1168,12 @@
             </div>
         </div>
 
+        <!-- Firma -->
+        <div class="firma">
+            Sistema de Monitoreo Lensware | © <?php echo date("Y"); ?>
+            <p>By: Nestor Rosales | Rosalesdev91</p>
+        </div>
+        </div>
     </main>
 </div>
 
