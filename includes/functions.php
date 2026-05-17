@@ -282,12 +282,29 @@ function saveCache(array $data): bool {
     return file_put_contents(CACHE_FILE, $json, LOCK_EX) !== false;
 }
 
-function backupCSV(string $filepath): void {
+function getLastCSVBackup(string $filepath): ?string {
+    $dir = BACKUP_FOLDER;
+    if (!is_dir($dir)) return null;
+    $files = glob($dir . '/BACKUP_*_' . basename($filepath)) ?: [];
+    usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
+    return $files[0] ?? null;
+}
+
+function hasDailyCSVBackup(string $filepath, DateTimeInterface $date): bool {
+    $dir = BACKUP_FOLDER;
+    if (!is_dir($dir)) return false;
+    $dailyFile = $dir . '/BACKUP_' . $date->format('Ymd') . '_2359_' . basename($filepath);
+    return file_exists($dailyFile);
+}
+
+function backupCSV(string $filepath, ?string $timestamp = null): void {
     if (!file_exists($filepath)) return;
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) mkdir($dir, 0777, true);
-    copy($filepath, $dir . '/BACKUP_' . date('Ymd_His') . '_' . basename($filepath));
-    logMessage("Respaldo creado: " . basename($filepath));
+    $stamp = $timestamp ?? date('Ymd_His');
+    $dest = $dir . '/BACKUP_' . $stamp . '_' . basename($filepath);
+    copy($filepath, $dest);
+    logMessage("Respaldo creado: " . basename($dest));
 }
 
 function listBackups(): array {
