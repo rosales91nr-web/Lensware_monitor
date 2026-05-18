@@ -305,12 +305,29 @@ function getChartOptions(type, overrides = {}) {
     return Object.assign({}, opts, overrides);
 }
 
-/** Lentes por fila: R=1, L=1, R/L o RL=2 (columna R/L del CSV). */
+/** Lentes por fila: R/OD=1, L/OI=1, R/L u OD+OI=2. */
 function lensCountFromSide(side) {
     const n = String(side || '').trim().toUpperCase().replace(/[\s\\]/g, '');
-    if (n === 'R/L' || n === 'RL') return 2;
+    if (!n) return 1;
+    if (['R/L', 'RL', 'OD+OI', 'OI+OD', 'BINO', 'BOTH'].includes(n)) return 2;
+    if (n.includes('OD') && n.includes('OI')) return 2;
     if (n.includes('+') && n.includes('R') && n.includes('L')) return 2;
+    if (['R', 'L', 'OD', 'OI'].includes(n)) return 1;
     return 1;
+}
+
+function lensCountFromRecord(r) {
+    return lensCountFromSide(r?.side_label || r?.side || '');
+}
+
+/** Top causas + bucket Otros para que el total coincida con lentes quebrados. */
+function buildCauseChartEntries(breaCausa, maxSlices = 8) {
+    const sorted = Object.entries(breaCausa || {}).sort((a, b) => b[1] - a[1]);
+    if (sorted.length <= maxSlices) return sorted;
+    const top = sorted.slice(0, maxSlices - 1);
+    const otros = sorted.slice(maxSlices - 1).reduce((s, [, v]) => s + v, 0);
+    if (otros > 0) top.push(['Otros', otros]);
+    return top;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -349,8 +366,9 @@ function renderCharts(stats) {
     }
     document.getElementById('status-meta').textContent = `${statusEntries.length} estados`;
 
-    // Causes chart
-    const causeEntries = Object.entries(stats.brea_causa || {}).slice(0,8);
+    // Causes chart (lentes; incluye "Otros" si hay más de 8 causas)
+    const causeEntries = buildCauseChartEntries(stats.brea_causa, 8);
+    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#64748B'];
     if (window.causesChart) window.causesChart.destroy();
     const ctxC = document.getElementById('chart-causes')?.getContext('2d');
     if (ctxC && causeEntries.length) {
@@ -358,7 +376,7 @@ function renderCharts(stats) {
             type: 'doughnut',
             data: {
                 labels: causeEntries.map(([k])=>k),
-                datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor: ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316'], borderWidth: 2 }]
+                datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor: causeEntries.map((_,i)=>causeColors[i%causeColors.length]), borderWidth: 2 }]
             },
             options: getChartOptions('doughnut'),
         });
@@ -612,7 +630,7 @@ function renderBreakages() {
     // Si existe un sub-contador de lentes, mostrarlo también
     const lentesBadge = document.getElementById('breakages-lentes-count');
     if (lentesBadge) {
-        const totalLentes = data.reduce((acc, r) => acc + lensCountFromSide(r.side), 0);
+        const totalLentes = data.reduce((acc, r) => acc + lensCountFromRecord(r), 0);
         lentesBadge.textContent = formatNumber(totalLentes);
     }
 }
@@ -1246,7 +1264,8 @@ function renderHistCharts(stats) {
     }
 
     // Causes
-    const causeEntries = Object.entries(stats.brea_causa || {}).slice(0,8);
+    const causeEntries = buildCauseChartEntries(stats.brea_causa, 8);
+    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#64748B'];
     if (histState.chartCauses) histState.chartCauses.destroy();
     const ctxC = document.getElementById('hist-chart-causes')?.getContext('2d');
     if (ctxC && causeEntries.length) {
@@ -1254,7 +1273,7 @@ function renderHistCharts(stats) {
             type: 'doughnut',
             data: {
                 labels: causeEntries.map(([k])=>k),
-                datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor:['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316'], borderWidth:2 }]
+                datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor: causeEntries.map((_,i)=>causeColors[i%causeColors.length]), borderWidth:2 }]
             },
             options: getChartOptions('doughnut'),
         });

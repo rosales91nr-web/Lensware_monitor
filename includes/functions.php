@@ -40,16 +40,29 @@ function normalizeCsvEncoding(string $raw): string {
     return mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');
 }
 
-/** Lentes por fila según columna R/L: R=1, L=1, R/L=2. */
+/** Lentes por fila: R/OD=1, L/OI=1, R/L u OD+OI=2. */
 function lensCountFromSide(string $side): int {
     $n = strtoupper(str_replace([' ', '\\'], '', trim($side)));
-    if ($n === 'R/L' || $n === 'RL') {
+    if ($n === '') {
+        return 1;
+    }
+    if (in_array($n, ['R/L', 'RL', 'OD+OI', 'OI+OD', 'BINO', 'BOTH'], true)) {
+        return 2;
+    }
+    if (str_contains($n, 'OD') && str_contains($n, 'OI')) {
         return 2;
     }
     if (str_contains($n, '+') && str_contains($n, 'R') && str_contains($n, 'L')) {
         return 2;
     }
+    if (in_array($n, ['R', 'L', 'OD', 'OI'], true)) {
+        return 1;
+    }
     return 1;
+}
+
+function lensCountFromRecord(array $r): int {
+    return lensCountFromSide($r['side_label'] ?? $r['side'] ?? '');
 }
 
 function findLatestCSV(): ?string {
@@ -213,9 +226,9 @@ function processCSV(string $filepath): ?array {
             'device'       => sanitizeCsvField($row['Device'] ?? ''),
             'side'         => ($sideRaw = sanitizeCsvField($row['R/L'] ?? '')),
             'side_label'   => match(strtoupper(str_replace([' ', '\\'], '', $sideRaw))) {
-                'R'   => 'OD',
-                'L'   => 'OI',
-                'R/L', 'RL' => 'OD+OI',
+                'R', 'OD'   => 'OD',
+                'L', 'OI'   => 'OI',
+                'R/L', 'RL', 'OD+OI', 'OI+OD' => 'OD+OI',
                 default => $sideRaw,
             },
             'lens_desc'    => sanitizeCsvField($row['Lens description'] ?? ''),
@@ -342,7 +355,7 @@ function calculateStats(array $records): array {
         $jobsSet[$r['job']] = true;
 
         if ($r['is_breakage']) {
-            $lensWeight = lensCountFromSide($r['side']);
+            $lensWeight = lensCountFromRecord($r);
             $totalLentesBrea += $lensWeight;
             $jobsBrea[$r['job']] = true;
             $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
