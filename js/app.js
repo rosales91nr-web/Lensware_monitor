@@ -469,6 +469,8 @@ function enrichHistChartHeaders() {
 }
 
 function onChartTypeChange(e) {
+    // Ignorar cambios programáticos (sel.value = ...) — solo reaccionar a clicks del usuario
+    if (!e.isTrusted) return;
     const sel = e.target.closest('.chart-type-select');
     if (!sel?.dataset.chartKey) return;
     chartPrefs[sel.dataset.chartKey] = sel.value;
