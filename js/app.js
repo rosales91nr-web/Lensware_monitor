@@ -480,6 +480,11 @@ function onChartTypeChange(e) {
 
 function renderDeviceHourChart() {
     if (!deviceModalHourData) return;
+    const canvas = document.getElementById('device-hour-chart');
+    if (canvas && canvas.offsetWidth === 0) {
+        requestAnimationFrame(() => renderDeviceHourChart());
+        return;
+    }
     createAppChart('device-hour-chart', 'deviceModal', {
         labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
         values: deviceModalHourData,
@@ -1034,8 +1039,12 @@ async function showDeviceDetail(deviceName) {
             if (!modal.classList.contains('active')) return;
             const sel = document.querySelector('#modal-device .chart-type-select[data-chart-key="deviceModal"]');
             if (sel) sel.value = getChartPref('deviceModal');
-            renderDeviceHourChart();
-        }, 100);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    renderDeviceHourChart();
+                });
+            });
+        }, 50);
     } catch(e) { console.error(e); }
 }
 
@@ -1598,12 +1607,20 @@ function renderHistContent(data) {
 
     histBreakagesCache = breakages;
     histBreaPage = 1;
+    // Esperar a que el DOM esté pintado antes de crear los canvas de Chart.js.
+    // Un único setTimeout no garantiza que el browser haya calculado el layout
+    // cuando el contenedor acaba de ser reemplazado con innerHTML.
+    // El doble requestAnimationFrame dentro del timeout asegura dimensiones reales.
     setTimeout(() => {
         enrichHistChartHeaders();
-        renderHistCharts(stats);
-        syncChartTypeSelects();
         renderHistBreakagesTable();
-    }, 100);
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                renderHistCharts(stats);
+                syncChartTypeSelects();
+            });
+        });
+    }, 50);
 }
 
 function renderHistBreakagesTable() {
@@ -1637,6 +1654,14 @@ function renderHistBreakagesTable() {
  */
 function renderHistCharts(stats) {
     lastHistStats = stats;
+
+    // Guard: si los canvas aún no tienen ancho real, reintentar en el próximo frame.
+    const probe = document.getElementById('hist-chart-status');
+    if (probe && probe.offsetWidth === 0) {
+        requestAnimationFrame(() => renderHistCharts(stats));
+        return;
+    }
+
     const statusEntries = Object.entries(stats.por_status || {}).sort((a, b) => b[1] - a[1]);
     createAppChart('hist-chart-status', 'status', {
         labels: statusEntries.map(([k]) => STATUS_LABELS[k] || k),
