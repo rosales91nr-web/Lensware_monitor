@@ -1,3 +1,261 @@
+<?php
+// ─── AUTENTICACIÓN DE ACCESO ───────────────────────────────────────────────
+session_start();
+
+define('MASTER_PASSWORD_HASH', password_hash('JimLab*Lensware#_', PASSWORD_BCRYPT));
+
+// Verificar hash fijo (evita comparación directa de texto plano)
+$_CORRECT_HASH = '$2y$10$'; // se usa password_verify abajo
+
+$loginError = '';
+
+if (isset($_POST['logout'])) {
+    session_destroy();
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+if (isset($_POST['master_key'])) {
+    if (password_verify($_POST['master_key'], MASTER_PASSWORD_HASH)) {
+        $_SESSION['lensware_auth'] = true;
+        $_SESSION['lensware_time'] = time();
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    } else {
+        $loginError = 'Clave incorrecta. Intenta de nuevo.';
+    }
+}
+
+// Sesión expira en 8 horas
+if (isset($_SESSION['lensware_auth']) && (time() - ($_SESSION['lensware_time'] ?? 0)) > 28800) {
+    session_destroy();
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+if (!isset($_SESSION['lensware_auth'])) {
+?><!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lensware Pro — Acceso</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f172a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+        /* Fondo animado */
+        body::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 20% 30%, rgba(59,130,246,0.12) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 80% 70%, rgba(139,92,246,0.10) 0%, transparent 60%);
+            pointer-events: none;
+        }
+        .login-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 24px;
+            padding: 48px 44px 44px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+            position: relative;
+            z-index: 1;
+        }
+        .login-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+        .login-logo-icon {
+            width: 52px;
+            height: 52px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            box-shadow: 0 8px 20px rgba(59,130,246,0.35);
+            flex-shrink: 0;
+        }
+        .login-logo-text h1 {
+            font-size: 20px;
+            font-weight: 800;
+            color: white;
+            line-height: 1.1;
+        }
+        .login-logo-text span {
+            font-size: 11px;
+            color: #64748b;
+            font-weight: 500;
+        }
+        .login-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #cbd5e1;
+            margin-bottom: 6px;
+        }
+        .login-subtitle {
+            font-size: 13px;
+            color: #64748b;
+            margin-bottom: 28px;
+        }
+        .input-group {
+            position: relative;
+            margin-bottom: 16px;
+        }
+        .input-group i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #475569;
+            font-size: 15px;
+            pointer-events: none;
+            transition: color 0.2s;
+        }
+        .input-group:focus-within i {
+            color: #3b82f6;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 14px 48px 14px 44px;
+            background: #0f172a;
+            border: 1.5px solid #334155;
+            border-radius: 12px;
+            color: white;
+            font-size: 15px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            letter-spacing: 0.02em;
+        }
+        .input-group input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+        }
+        .input-group input::placeholder { color: #475569; }
+        .toggle-password {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #475569;
+            cursor: pointer;
+            font-size: 15px;
+            padding: 4px;
+            transition: color 0.2s;
+        }
+        .toggle-password:hover { color: #94a3b8; }
+        .btn-login {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+            box-shadow: 0 4px 16px rgba(59,130,246,0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .btn-login:hover {
+            opacity: 0.92;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(59,130,246,0.45);
+        }
+        .btn-login:active { transform: translateY(0); }
+        .error-msg {
+            background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.3);
+            color: #fca5a5;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .login-footer {
+            margin-top: 32px;
+            text-align: center;
+            font-size: 11px;
+            color: #334155;
+        }
+    </style>
+</head>
+<body>
+<div class="login-card">
+    <div class="login-logo">
+        <div class="login-logo-icon"><i class="fas fa-eye"></i></div>
+        <div class="login-logo-text">
+            <h1>Lensware Pro</h1>
+            <span>Monitor de Producción</span>
+        </div>
+    </div>
+    <p class="login-title">Acceso restringido</p>
+    <p class="login-subtitle">Ingresa la clave maestra para continuar.</p>
+
+    <?php if ($loginError): ?>
+    <div class="error-msg"><i class="fas fa-exclamation-circle"></i><?= htmlspecialchars($loginError) ?></div>
+    <?php endif; ?>
+
+    <form method="POST" autocomplete="off">
+        <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" name="master_key" id="master_key"
+                   placeholder="Clave maestra" autofocus required>
+            <button type="button" class="toggle-password" onclick="togglePwd()" tabindex="-1">
+                <i class="fas fa-eye" id="pwd-icon"></i>
+            </button>
+        </div>
+        <button type="submit" class="btn-login">
+            <i class="fas fa-sign-in-alt"></i> Ingresar al panel
+        </button>
+    </form>
+    <div class="login-footer">Sistema de Monitoreo Lensware &nbsp;·&nbsp; Rosalesdev91</div>
+</div>
+<script>
+function togglePwd() {
+    const inp = document.getElementById('master_key');
+    const ico = document.getElementById('pwd-icon');
+    if (inp.type === 'password') { inp.type = 'text'; ico.className = 'fas fa-eye-slash'; }
+    else { inp.type = 'password'; ico.className = 'fas fa-eye'; }
+}
+</script>
+</body>
+</html>
+<?php
+    exit;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1133,6 +1391,16 @@
                 <i class="fas fa-sync-alt"></i>
                 <span class="btn-label">Actualizar</span>
             </button>
+            <form method="POST" style="margin-top:8px;">
+                <button type="submit" name="logout" value="1"
+                    class="btn-refresh"
+                    style="background:#ef4444;width:100%;"
+                    title="Cerrar sesión"
+                    onclick="return confirm('¿Cerrar sesión?')">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span class="btn-label">Cerrar sesión</span>
+                </button>
+            </form>
         </div>
     </aside>
 
