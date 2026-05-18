@@ -1430,7 +1430,7 @@ function togglePwd() {
                 <div class="kpi-card"><div class="kpi-icon red" style="background:#fef2f2;"><i class="fas fa-eye-slash" style="color:#dc2626;"></i></div><div class="kpi-info"><h3>Total Lentes Quebrados</h3><p id="kpi-lentes-brea">0</p><small style="color:#94a3b8;font-size:11px;">Lentes individuales</small></div></div>
                 <div class="kpi-card"><div class="kpi-icon orange"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><h3>Tasa Quiebra</h3><p id="kpi-rate">0%</p></div></div>
                 <div class="kpi-card"><div class="kpi-icon green"><i class="fas fa-user-check"></i></div><div class="kpi-info"><h3>Operadores</h3><p id="kpi-users">0</p></div></div>
-                <div class="kpi-card"><div class="kpi-icon purple"><i class="fas fa-microchip"></i></div><div class="kpi-info"><h3>Dispositivos</h3><p id="kpi-devices">0</p></div></div>
+                <div class="kpi-card"><div class="kpi-icon purple"><i class="fas fa-microchip"></i></div><div class="kpi-info"><h3>Equipos</h3><p id="kpi-devices">0</p></div></div>
             </div>
             <div class="charts-row">
                 <div class="chart-card">
@@ -1452,7 +1452,7 @@ function togglePwd() {
                     <canvas id="chart-hour" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-chart-simple"></i> Top Dispositivos</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="devices"><option value="bar-h">Barras H</option><option value="bar">Barras</option><option value="line">Líneas</option></select></div></div>
+                    <div class="chart-header"><h3><i class="fas fa-chart-simple"></i> Top Equipos</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="devices"><option value="bar-h">Barras H</option><option value="bar">Barras</option><option value="line">Líneas</option></select></div></div>
                     <canvas id="chart-devices" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
             </div>
@@ -1496,7 +1496,7 @@ function togglePwd() {
         <div id="tab-activity" class="tab-content">
             <div class="filters-bar">
                 <select id="act-status" class="filter-select"><option value="">📊 Todos los estados</option></select>
-                <select id="act-device" class="filter-select"><option value="">🖥️ Todos los dispositivos</option></select>
+                <select id="act-device" class="filter-select"><option value="">🖥️ Todos los equiposs</option></select>
                 <select id="act-user" class="filter-select"><option value="">👥 Todos los usuarios</option></select>
                 <select id="act-side" class="filter-select"><option value="">👁️ Todos los lados</option><option value="R">OD (R)</option><option value="L">OI (L)</option></select>
                 <label class="checkbox-label"><input type="checkbox" id="act-only-brea"> ⚠️ Solo quiebras</label>
@@ -1530,7 +1530,7 @@ function togglePwd() {
         <div id="tab-operators" class="tab-content">
             <div class="table-container table-scroll">
                 <table class="data-table" id="operators-table">
-                    <thead><tr><th>Operador</th><th>Registros</th><th>Jobs</th><th>Dispositivos</th></tr></thead>
+                    <thead><tr><th>Operador</th><th>Registros</th><th>Jobs</th><th>Equipos</th></tr></thead>
                     <tbody id="operators-tbody"></tbody>
                 </table>
             </div>
