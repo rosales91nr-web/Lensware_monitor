@@ -1032,7 +1032,8 @@
             <div class="kpi-grid">
                 <div class="kpi-card"><div class="kpi-icon blue"><i class="fas fa-database"></i></div><div class="kpi-info"><h3>Total Registros</h3><p id="kpi-total">0</p></div></div>
                 <div class="kpi-card"><div class="kpi-icon teal"><i class="fas fa-briefcase"></i></div><div class="kpi-info"><h3>Jobs Únicos</h3><p id="kpi-jobs">0</p></div></div>
-                <div class="kpi-card"><div class="kpi-icon red"><i class="fas fa-exclamation-triangle"></i></div><div class="kpi-info"><h3>Jobs c/Quiebra</h3><p id="kpi-brea">0</p></div></div>
+                <div class="kpi-card"><div class="kpi-icon red"><i class="fas fa-exclamation-triangle"></i></div><div class="kpi-info"><h3>Órdenes c/Quiebra</h3><p id="kpi-brea">0</p><small style="color:#94a3b8;font-size:11px;">Órdenes únicas</small></div></div>
+                <div class="kpi-card"><div class="kpi-icon red" style="background:#fef2f2;"><i class="fas fa-eye-slash" style="color:#dc2626;"></i></div><div class="kpi-info"><h3>Total Lentes Quebrados</h3><p id="kpi-lentes-brea">0</p><small style="color:#94a3b8;font-size:11px;">Lentes individuales</small></div></div>
                 <div class="kpi-card"><div class="kpi-icon orange"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><h3>Tasa Quiebra</h3><p id="kpi-rate">0%</p></div></div>
                 <div class="kpi-card"><div class="kpi-icon green"><i class="fas fa-user-check"></i></div><div class="kpi-info"><h3>Operadores</h3><p id="kpi-users">0</p></div></div>
                 <div class="kpi-card"><div class="kpi-icon purple"><i class="fas fa-microchip"></i></div><div class="kpi-info"><h3>Dispositivos</h3><p id="kpi-devices">0</p></div></div>
@@ -1085,7 +1086,7 @@
                     <tbody id="breakages-tbody"></tbody>
                 </table>
             </div>
-            <div class="table-footer"><span id="breakages-count">0</span> quiebras registradas</div>
+            <div class="table-footer"><span id="breakages-count">0</span> órdenes únicas con quiebra &nbsp;|&nbsp; <span id="breakages-lentes-count">0</span> lentes quebrados</div>
         </div>
 
         <!-- =================== ACTIVITY TAB =================== -->

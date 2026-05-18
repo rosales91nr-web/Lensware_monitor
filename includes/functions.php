@@ -305,7 +305,9 @@ function calculateStats(array $records): array {
     $byStatus = []; $byHour = array_fill(0, 24, 0);
     $byDevice = []; $byUser = []; $byCause = [];
     $jobsSet = []; $jobsBrea = []; $breaPerJob = []; $breaDev = []; $breaUser = [];
-    $eventos = 0;
+    $totalLentesBrea = 0; // conteo real de lentes (filas) con BREA
+    // Para causas: deduplicar por orden única (mismo job+causa = 1 evento de orden)
+    $breaJobCausaSeen = []; // "job|causa" => true
 
     foreach ($records as $r) {
         $s = $r['status'];
@@ -323,11 +325,19 @@ function calculateStats(array $records): array {
         $jobsSet[$r['job']] = true;
 
         if ($r['is_breakage']) {
-            $eventos++;
+            $totalLentesBrea++; // cada fila BREA = 1 lente quebrado
             $jobsBrea[$r['job']] = true;
-            $breaPerJob[$r['job']] = ($breaPerJob[$r['job']] ?? 0) + 1;
             $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
-            $byCause[$cause] = ($byCause[$cause] ?? 0) + 1;
+
+            // Causa por orden única: si el mismo job ya tiene esta causa, no duplicar
+            $causeKey = $r['job'] . '|' . $cause;
+            if (!isset($breaJobCausaSeen[$causeKey])) {
+                $breaJobCausaSeen[$causeKey] = true;
+                $byCause[$cause] = ($byCause[$cause] ?? 0) + 1;
+                // Top jobs brea: contar por órdenes únicas (no por lentes)
+                $breaPerJob[$r['job']] = ($breaPerJob[$r['job']] ?? 0) + 1;
+            }
+
             if ($dev !== '') $breaDev[$dev] = ($breaDev[$dev] ?? 0) + 1;
             $breaUser[$usr]  = ($breaUser[$usr]  ?? 0) + 1;
         }
@@ -342,30 +352,73 @@ function calculateStats(array $records): array {
     }
 
     $jobsUnicos  = count($jobsSet);
-    $jobsConBrea = count($jobsBrea);
+    $jobsConBrea = count($jobsBrea); // órdenes únicas con quiebra
 
     return [
-        'total'         => $total,
-        'jobs_unicos'   => $jobsUnicos,
-        'jobs_con_brea' => $jobsConBrea,
-        'brea_tasa'     => $jobsUnicos > 0 ? round($jobsConBrea / $jobsUnicos * 100, 2) : 0,
-        'eventos_brea'  => $eventos,
-        'usuarios'      => count($byUser),
-        'dispositivos'  => count($byDevice),
-        'lentes_tipos'  => count(array_unique(array_column($records, 'lens_desc'))),
-        'por_status'    => $byStatus,
-        'por_hora'      => $byHour,
-        'por_device'    => $byDevice,
-        'por_user'      => $byUser,
-        'brea_causa'    => $byCause,
-        'brea_device'   => $breaDev,
-        'brea_por_user' => $breaUser,
-        'top_jobs_brea' => $topJobsBrea,
+        'total'              => $total,
+        'jobs_unicos'        => $jobsUnicos,
+        'jobs_con_brea'      => $jobsConBrea,       // KPI: órdenes únicas con quiebra
+        'total_lentes_brea'  => $totalLentesBrea,   // KPI: total lentes quebrados (filas BREA)
+        'brea_tasa'          => $jobsUnicos > 0 ? round($jobsConBrea / $jobsUnicos * 100, 2) : 0,
+        'eventos_brea'       => $totalLentesBrea,   // alias para compatibilidad
+        'usuarios'           => count($byUser),
+        'dispositivos'       => count($byDevice),
+        'lentes_tipos'       => count(array_unique(array_column($records, 'lens_desc'))),
+        'por_status'         => $byStatus,
+        'por_hora'           => $byHour,
+        'por_device'         => $byDevice,
+        'por_user'           => $byUser,
+        'brea_causa'         => $byCause,           // causas por órdenes únicas
+        'brea_device'        => $breaDev,
+        'brea_por_user'      => $breaUser,
+        'top_jobs_brea'      => $topJobsBrea,
     ];
 }
 
+/**
+ * Devuelve quiebras unicas por orden.
+ * Si un Job tiene R y L ambos en BREA, se consolidan en una sola fila con side_label = 'OD+OI'.
+ */
 function getBreakages(array $records): array {
-    return array_values(array_filter($records, fn($r) => $r['is_breakage']));
+    $breaRecords = array_filter($records, fn($r) => $r['is_breakage']);
+
+    // Agrupar por job
+    $byJob = [];
+    foreach ($breaRecords as $r) {
+        $byJob[$r['job']][] = $r;
+    }
+
+    $consolidated = [];
+    foreach ($byJob as $job => $rows) {
+        if (count($rows) === 1) {
+            $consolidated[] = $rows[0];
+        } else {
+            // Multiples filas: consolidar lados
+            $base  = $rows[0];
+            $sides = array_unique(array_map(fn($r) => $r['side'], $rows));
+            sort($sides);
+            if (in_array('R', $sides) && in_array('L', $sides)) {
+                $base['side']       = 'RL';
+                $base['side_label'] = 'OD+OI';
+            } else {
+                $base['side']       = implode('+', $sides);
+                $base['side_label'] = implode('+', array_map(
+                    fn($s) => match($s) { 'R' => 'OD', 'L' => 'OI', default => $s },
+                    $sides
+                ));
+            }
+            $consolidated[] = $base;
+        }
+    }
+
+    // Ordenar por fecha+hora descendente
+    usort($consolidated, function ($a, $b) {
+        $da = ($a['date_raw'] ?? '') . ' ' . ($a['time_raw'] ?? '');
+        $db = ($b['date_raw'] ?? '') . ' ' . ($b['time_raw'] ?? '');
+        return strcmp($db, $da);
+    });
+
+    return array_values($consolidated);
 }
 
 function getDeviceStats(array $records): array {

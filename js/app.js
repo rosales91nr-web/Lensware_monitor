@@ -218,10 +218,15 @@ function updateUI() {
     const stats = appData.stats;
     document.getElementById('kpi-total').textContent  = formatNumber(stats.total || 0);
     document.getElementById('kpi-jobs').textContent   = formatNumber(stats.jobs_unicos || 0);
+    // kpi-brea: órdenes únicas con quiebra
     document.getElementById('kpi-brea').textContent   = formatNumber(stats.jobs_con_brea || 0);
+    // kpi-lentes-brea: total lentes quebrados (si existe el elemento en el HTML)
+    const kpiLentesBrea = document.getElementById('kpi-lentes-brea');
+    if (kpiLentesBrea) kpiLentesBrea.textContent = formatNumber(stats.total_lentes_brea || 0);
     document.getElementById('kpi-rate').textContent   = `${(stats.brea_tasa || 0).toFixed(1)}%`;
     document.getElementById('kpi-users').textContent  = formatNumber(stats.usuarios || 0);
     document.getElementById('kpi-devices').textContent= formatNumber(stats.dispositivos || 0);
+    // badge: órdenes únicas con quiebra
     document.getElementById('brea-badge').textContent = stats.jobs_con_brea || 0;
 
     renderCharts(stats);
@@ -594,7 +599,15 @@ function renderBreakages() {
             <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
             ${blankDescCellHtml(r)}
         </tr>`).join('');
+    // data ya son quiebras consolidadas por orden única (R+L = 1 fila)
     document.getElementById('breakages-count').textContent = formatNumber(data.length);
+    // Si existe un sub-contador de lentes, mostrarlo también
+    const lentesBadge = document.getElementById('breakages-lentes-count');
+    if (lentesBadge) {
+        // Contar lentes reales: OD+OI = 2, OD u OI = 1
+        const totalLentes = data.reduce((acc, r) => acc + (r.side === 'RL' ? 2 : 1), 0);
+        lentesBadge.textContent = formatNumber(totalLentes);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
