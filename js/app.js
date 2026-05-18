@@ -214,6 +214,16 @@ function switchTab(tabId) {
     if (tabId === 'activity') renderActivity();
     if (tabId === 'historico' && histState.backupsByDate.length === 0) loadHistBackupDays();
     if (tabId === 'search' && searchState.query) renderSearchResults();
+
+    // Redibujar gráficas activas después de que el tab sea visible
+    // (el ResizeObserver de Chart.js limpia el canvas al pasar de display:none a block)
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            Object.values(chartInstances).forEach(c => {
+                if (c?.canvas?.isConnected) c.update('none');
+            });
+        });
+    });
 }
 
 function refreshDashboardCharts() {
@@ -317,6 +327,8 @@ function getChartOptions(type, overrides = {}) {
     const opts = {
         responsive: true,
         maintainAspectRatio: false,
+        resizeDelay: 0,
+        animation: { duration: 400 },
         plugins: {
             legend: { display: false },
             datalabels,
@@ -482,16 +494,12 @@ function onChartTypeChange(e) {
 
 function renderDeviceHourChart() {
     if (!deviceModalHourData) return;
-    const canvas = document.getElementById('device-hour-chart');
-    if (canvas && canvas.offsetWidth === 0) {
-        requestAnimationFrame(() => renderDeviceHourChart());
-        return;
-    }
     createAppChart('device-hour-chart', 'deviceModal', {
         labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
         values: deviceModalHourData,
         colors: '#3b82f6',
         skipIfEmpty: false,
+        optionsOverride: { responsive: false, maintainAspectRatio: false },
     });
 }
 
@@ -1041,11 +1049,7 @@ async function showDeviceDetail(deviceName) {
             if (!modal.classList.contains('active')) return;
             const sel = document.querySelector('#modal-device .chart-type-select[data-chart-key="deviceModal"]');
             if (sel) sel.value = getChartPref('deviceModal');
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    renderDeviceHourChart();
-                });
-            });
+            renderDeviceHourChart();
         }, 50);
     } catch(e) { console.error(e); }
 }
@@ -1609,20 +1613,12 @@ function renderHistContent(data) {
 
     histBreakagesCache = breakages;
     histBreaPage = 1;
-    // Esperar a que el DOM esté pintado antes de crear los canvas de Chart.js.
-    // Un único setTimeout no garantiza que el browser haya calculado el layout
-    // cuando el contenedor acaba de ser reemplazado con innerHTML.
-    // El doble requestAnimationFrame dentro del timeout asegura dimensiones reales.
     setTimeout(() => {
         enrichHistChartHeaders();
+        renderHistCharts(stats);
+        syncChartTypeSelects();
         renderHistBreakagesTable();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                renderHistCharts(stats);
-                syncChartTypeSelects();
-            });
-        });
-    }, 50);
+    }, 0);
 }
 
 function renderHistBreakagesTable() {
@@ -1657,18 +1653,14 @@ function renderHistBreakagesTable() {
 function renderHistCharts(stats) {
     lastHistStats = stats;
 
-    // Guard: si los canvas aún no tienen ancho real, reintentar en el próximo frame.
-    const probe = document.getElementById('hist-chart-status');
-    if (probe && probe.offsetWidth === 0) {
-        requestAnimationFrame(() => renderHistCharts(stats));
-        return;
-    }
+    const noResponsive = { responsive: false, maintainAspectRatio: false };
 
     const statusEntries = Object.entries(stats.por_status || {}).sort((a, b) => b[1] - a[1]);
     createAppChart('hist-chart-status', 'status', {
         labels: statusEntries.map(([k]) => STATUS_LABELS[k] || k),
         values: statusEntries.map(([, v]) => v),
         colors: statusEntries.map(([k]) => STATUS_COLORS[k] || '#64748B'),
+        optionsOverride: noResponsive,
     });
 
     const hourData = stats.por_hora || Array(24).fill(0);
@@ -1677,6 +1669,7 @@ function renderHistCharts(stats) {
         values: hourData,
         colors: '#3b82f6',
         skipIfEmpty: false,
+        optionsOverride: noResponsive,
     });
 
     const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
@@ -1689,6 +1682,7 @@ function renderHistCharts(stats) {
             labels: causeEntries.map(([k]) => k),
             values: causeEntries.map(([, v]) => v),
             colors: causeEntries.map((_, i) => causePalette[i % causePalette.length]),
+            optionsOverride: noResponsive,
         });
     } else {
         destroyAppChart(chartInstanceKey('hist-chart-causes', 'causes'));
@@ -1707,6 +1701,7 @@ function renderHistCharts(stats) {
             labels: devEntries.map(([k]) => k),
             values: devEntries.map(([, v]) => v),
             colors: '#8b5cf6',
+            optionsOverride: noResponsive,
         });
     } else {
         destroyAppChart(chartInstanceKey('hist-chart-devices', 'devices'));
