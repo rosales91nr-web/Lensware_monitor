@@ -639,6 +639,195 @@ function listBackups(): array {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Histórico por rango de fechas (múltiples backups)
+// ─────────────────────────────────────────────────────────────────────────────
+function appTodayDate(): string {
+    return (new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica')))->format('Y-m-d');
+}
+
+/** Agrupa listBackups() por YYYY-MM-DD. */
+function groupBackupsByDateFromList(array $all): array {
+    $byDate = [];
+    foreach ($all as $b) {
+        $name = $b['filename'];
+        if (preg_match('/BACKUP_(\d{4})(\d{2})(\d{2})_/', $name, $m)) {
+            $dateKey = "{$m[1]}-{$m[2]}-{$m[3]}";
+        } else {
+            $dateKey = substr($b['modified'], 0, 10);
+        }
+        $byDate[$dateKey][] = $b;
+    }
+    krsort($byDate);
+    return $byDate;
+}
+
+/** Backup oficial de un día: hoy = más reciente; pasado = _2359_ o el último del día. */
+function pickOfficialBackupMeta(array $backups, bool $isToday): ?array {
+    if ($backups === []) {
+        return null;
+    }
+    if ($isToday) {
+        return $backups[0];
+    }
+    foreach ($backups as $b) {
+        if (!empty($b['is_daily']) || str_contains($b['filename'], '_2359_')) {
+            return $b;
+        }
+    }
+    return $backups[0];
+}
+
+function filterRecordsByDateRange(array $records, string $dateFrom, string $dateTo): array {
+    return array_values(array_filter($records, function ($r) use ($dateFrom, $dateTo) {
+        $d = normalizeRecordDate($r['date_raw'] ?? '');
+        return $d !== null && $d >= $dateFrom && $d <= $dateTo;
+    }));
+}
+
+function filterRecordsByHourRange(array $records, ?int $hourFrom, ?int $hourTo): array {
+    if ($hourFrom === null && $hourTo === null) {
+        return $records;
+    }
+    $from = $hourFrom ?? 0;
+    $to   = $hourTo ?? 23;
+    return array_values(array_filter($records, function ($r) use ($from, $to) {
+        $h = recordHour($r['time_raw'] ?? '');
+        return $h >= $from && $h <= $to;
+    }));
+}
+
+function mergeRecordsDeduped(array $records): array {
+    $seen = [];
+    $out  = [];
+    foreach ($records as $r) {
+        $sig = recordSignature($r);
+        if (isset($seen[$sig])) {
+            continue;
+        }
+        $seen[$sig] = true;
+        $out[]      = $r;
+    }
+    return sortRecordsNewestFirst($out);
+}
+
+function miniStatsForRecords(array $records): array {
+    $s = calculateStats($records);
+    return [
+        'total'             => $s['total'],
+        'jobs_unicos'       => $s['jobs_unicos'],
+        'jobs_con_brea'     => $s['jobs_con_brea'],
+        'total_lentes_brea' => $s['total_lentes_brea'],
+        'brea_tasa'         => $s['brea_tasa'],
+    ];
+}
+
+/**
+ * Fusiona backups oficiales por día en un rango [date_from, date_to].
+ * Incluye hoy desde caché en vivo. Devuelve null si no hay registros.
+ */
+function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourFrom = '', string $hourTo = ''): ?array {
+    $tz    = new DateTimeZone('America/Costa_Rica');
+    $from  = DateTimeImmutable::createFromFormat('Y-m-d', $dateFrom, $tz);
+    $to    = DateTimeImmutable::createFromFormat('Y-m-d', $dateTo, $tz);
+    if (!$from || !$to || $from > $to) {
+        return null;
+    }
+
+    $days = (int) $from->diff($to)->days + 1;
+    if ($days > BACKUP_RANGE_MAX_DAYS) {
+        return ['_error' => 'max_days', 'max_days' => BACKUP_RANGE_MAX_DAYS, 'requested' => $days];
+    }
+
+    $today   = appTodayDate();
+    $byDate  = groupBackupsByDateFromList(listBackups());
+    $merged  = [];
+    $filesLoaded = [];
+    $statsByDay  = [];
+
+    for ($cursor = $from; $cursor <= $to; $cursor = $cursor->modify('+1 day')) {
+        $dateKey = $cursor->format('Y-m-d');
+        $isToday = ($dateKey === $today);
+        $dayRecords = [];
+
+        if ($isToday) {
+            $live = collectLiveRecordsForSearch();
+            $dayRecords = filterRecordsByDateRange($live, $dateKey, $dateKey);
+            if ($dayRecords !== []) {
+                $filesLoaded[] = [
+                    'date'     => $dateKey,
+                    'source'   => 'live',
+                    'filename' => null,
+                    'records'  => count($dayRecords),
+                ];
+            }
+        } else {
+            $backups = $byDate[$dateKey] ?? [];
+            $chosen  = pickOfficialBackupMeta($backups, false);
+            if (!$chosen) {
+                continue;
+            }
+            $path = BACKUP_FOLDER . '/' . $chosen['filename'];
+            if (!is_file($path)) {
+                continue;
+            }
+            $data = processCSV($path);
+            if (!$data || empty($data['records'])) {
+                continue;
+            }
+            $dayRecords = filterRecordsByDateRange($data['records'], $dateKey, $dateKey);
+            $filesLoaded[] = [
+                'date'     => $dateKey,
+                'source'   => 'backup',
+                'filename' => $chosen['filename'],
+                'records'  => count($dayRecords),
+            ];
+        }
+
+        if ($dayRecords !== []) {
+            $statsByDay[$dateKey] = miniStatsForRecords($dayRecords);
+            $merged = array_merge($merged, $dayRecords);
+        }
+    }
+
+    $hourFromInt = $hourFrom !== '' ? (int) $hourFrom : null;
+    $hourToInt   = $hourTo !== '' ? (int) $hourTo : null;
+    $merged      = filterRecordsByHourRange($merged, $hourFromInt, $hourToInt);
+
+    if ($merged === []) {
+        return null;
+    }
+
+    $deduped             = mergeRecordsDeduped($merged);
+    $duplicatesRemoved   = count($merged) - count($deduped);
+
+    return [
+        'records'      => $deduped,
+        'stats'        => calculateStats($deduped),
+        'breakages'    => getBreakages($deduped),
+        'device_stats' => getDeviceStats($deduped),
+        'filename'     => "RANGO_{$dateFrom}_a_{$dateTo}",
+        'source'       => 'backup_range',
+        'filters'      => [
+            'date_from' => $dateFrom,
+            'date_to'   => $dateTo,
+            'hour_from' => $hourFrom,
+            'hour_to'   => $hourTo,
+        ],
+        'range_meta'   => [
+            'date_from'           => $dateFrom,
+            'date_to'             => $dateTo,
+            'days_in_range'       => $days,
+            'days_with_data'      => count($statsByDay),
+            'files_loaded'        => $filesLoaded,
+            'records_before_dedup'=> count($merged),
+            'records_after_dedup' => count($deduped),
+            'duplicates_removed'  => $duplicatesRemoved,
+        ],
+        'stats_by_day' => $statsByDay,
+    ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Búsqueda de Job en vivo + backups históricos (un backup oficial por día)
 // ─────────────────────────────────────────────────────────────────────────────
 function recordSortKey(array $r): int {
@@ -656,6 +845,7 @@ function recordSignature(array $r): string {
         $r['date_raw'] ?? '',
         $r['time_raw'] ?? '',
         $r['status'] ?? '',
+        $r['side'] ?? '',
     ]);
 }
 

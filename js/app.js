@@ -28,10 +28,14 @@ let activeFilters = {
 // Estado del módulo Histórico
 // ─────────────────────────────────────────────────────────────────────────────
 let histState = {
-    backupsByDate: [],        // [{date, label, is_today, backup, all:[...]}, ...]
-    selectedDate: null,       // string 'YYYY-MM-DD'
-    selectedFile: null,       // filename del backup seleccionado
-    data: null,               // datos cargados del backup
+    backupsByDate: [],
+    selectedDate: null,
+    selectedFile: null,
+    mode: 'day',
+    dateFrom: null,
+    dateTo: null,
+    rangeMaxDays: 93,
+    data: null,
     chartStatus: null,
     chartCauses: null,
     chartHour: null,
@@ -87,6 +91,7 @@ function setupEventListeners() {
     // Filtros de breakages
     document.getElementById('filter-job')?.addEventListener('input',    () => renderBreakages());
     document.getElementById('filter-user')?.addEventListener('change',  () => renderBreakages());
+
     document.getElementById('breakages-tbody')?.addEventListener('click', e => {
         const tr = e.target.closest('tr[data-brea-idx]');
         if (!tr) return;
@@ -123,13 +128,25 @@ function setupEventListeners() {
     });
 
     // ── Histórico ──
+    document.querySelectorAll('[data-hist-mode]').forEach(btn => {
+        btn.addEventListener('click', () => setHistMode(btn.dataset.histMode));
+    });
+    document.querySelectorAll('[data-hist-preset]').forEach(btn => {
+        btn.addEventListener('click', () => applyHistPreset(btn.dataset.histPreset));
+    });
+    document.getElementById('hist-date-from')?.addEventListener('change', () => {
+        histState.dateFrom = document.getElementById('hist-date-from')?.value || null;
+        updateHistLoadButton();
+    });
+    document.getElementById('hist-date-to')?.addEventListener('change', () => {
+        histState.dateTo = document.getElementById('hist-date-to')?.value || null;
+        updateHistLoadButton();
+    });
     document.getElementById('hist-backup-select')?.addEventListener('change', e => {
         histState.selectedFile = e.target.value || null;
-        document.getElementById('btn-hist-load').disabled = !histState.selectedFile;
+        updateHistLoadButton();
     });
-
     document.getElementById('btn-hist-load')?.addEventListener('click', () => loadHistData());
-
     document.getElementById('btn-hist-reset')?.addEventListener('click', () => resetHistFilters());
 
     document.getElementById('btn-hist-close')?.addEventListener('click', () => {
@@ -1022,6 +1039,93 @@ async function showBackups() {
 // ══════════════════════════════════════════════════════════════════════════════
 // ─────────────────────────────────────────────────────────────────────────────
 
+function formatDateISO(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function setHistMode(mode) {
+    histState.mode = mode;
+    document.querySelectorAll('.hist-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.histMode === mode);
+    });
+    document.getElementById('hist-mode-day')?.classList.toggle('hidden', mode !== 'day');
+    const rangePanel = document.getElementById('hist-mode-range');
+    if (rangePanel) {
+        rangePanel.classList.toggle('hidden', mode !== 'range');
+    }
+    if (mode === 'range') {
+        initHistRangeDefaults();
+    }
+    updateHistLoadButton();
+}
+
+function initHistRangeDefaults() {
+    const toEl = document.getElementById('hist-date-to');
+    const fromEl = document.getElementById('hist-date-from');
+    const today = new Date();
+    if (toEl && !toEl.value) {
+        toEl.value = formatDateISO(today);
+        histState.dateTo = toEl.value;
+    }
+    if (fromEl && !fromEl.value) {
+        const from = new Date(today);
+        from.setDate(from.getDate() - 6);
+        fromEl.value = formatDateISO(from);
+        histState.dateFrom = fromEl.value;
+    }
+    const dates = histState.backupsByDate.map(d => d.date).filter(Boolean);
+    if (dates.length && fromEl && toEl) {
+        fromEl.min = dates[dates.length - 1];
+        fromEl.max = dates[0];
+        toEl.min = dates[dates.length - 1];
+        toEl.max = dates[0];
+    }
+}
+
+function applyHistPreset(preset) {
+    const today = new Date();
+    const to = formatDateISO(today);
+    let from = new Date(today);
+    if (preset === '7') {
+        from.setDate(from.getDate() - 6);
+    } else if (preset === '30') {
+        from.setDate(from.getDate() - 29);
+    } else if (preset === 'month') {
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+    const fromStr = formatDateISO(from);
+    const fromEl = document.getElementById('hist-date-from');
+    const toEl = document.getElementById('hist-date-to');
+    if (fromEl) fromEl.value = fromStr;
+    if (toEl) toEl.value = to;
+    histState.dateFrom = fromStr;
+    histState.dateTo = to;
+    setHistMode('range');
+    updateHistLoadButton();
+}
+
+function updateHistLoadButton() {
+    const btn = document.getElementById('btn-hist-load');
+    if (!btn) return;
+    if (histState.mode === 'range') {
+        btn.disabled = !(histState.dateFrom && histState.dateTo);
+    } else {
+        btn.disabled = !histState.selectedFile;
+    }
+}
+
+function getHistHourFilters() {
+    const hourFrom = document.getElementById('hist-hour-from')?.value?.trim() || '';
+    const hourTo = document.getElementById('hist-hour-to')?.value?.trim() || '';
+    if (hourFrom !== '' && hourTo !== '' && parseInt(hourFrom, 10) > parseInt(hourTo, 10)) {
+        return { error: '⚠️ La hora de inicio no puede ser mayor que la hora de fin.' };
+    }
+    return { hourFrom, hourTo };
+}
+
 /**
  * Carga los días disponibles (agrupados por fecha) desde el endpoint backups_by_date
  * y renderiza el selector de días (chips) y el select de backups.
@@ -1043,6 +1147,7 @@ async function loadHistBackupDays() {
         const todayEntry = histState.backupsByDate.find(d => d.is_today)
             || histState.backupsByDate[0];
         if (todayEntry) selectHistDay(todayEntry.date);
+        initHistRangeDefaults();
     } catch(e) {
         picker.innerHTML = '<span style="font-size:12px;color:#ef4444;">Error al cargar backups.</span>';
     }
@@ -1125,34 +1230,32 @@ function selectHistDay(date) {
         }
     }
 
-    document.getElementById('btn-hist-load').disabled = !histState.selectedFile;
+    updateHistLoadButton();
 }
 
-/**
- * Carga datos del backup seleccionado aplicando los filtros de hora.
- */
 async function loadHistData() {
-    if (!histState.selectedFile) return;
-
-    const hourFrom = document.getElementById('hist-hour-from')?.value?.trim() || '';
-    const hourTo   = document.getElementById('hist-hour-to')?.value?.trim()   || '';
-
-    // Validar rango horario
-    if (hourFrom !== '' && hourTo !== '') {
-        if (parseInt(hourFrom) > parseInt(hourTo)) {
-            showHistStatus('error', '⚠️ La hora de inicio no puede ser mayor que la hora de fin.');
-            return;
-        }
+    const hours = getHistHourFilters();
+    if (hours.error) {
+        showHistStatus('error', hours.error);
+        return;
     }
+    if (histState.mode === 'range') {
+        await loadHistRangeData(hours.hourFrom, hours.hourTo);
+    } else {
+        await loadHistSingleDayData(hours.hourFrom, hours.hourTo);
+    }
+}
+
+async function loadHistSingleDayData(hourFrom, hourTo) {
+    if (!histState.selectedFile) return;
 
     showHistStatus('loading', 'Cargando backup...');
     document.getElementById('btn-hist-load').disabled = true;
 
     let url = `api.php?action=backup_data&file=${encodeURIComponent(histState.selectedFile)}`;
     if (hourFrom !== '') url += `&hour_from=${encodeURIComponent(hourFrom)}`;
-    if (hourTo   !== '') url += `&hour_to=${encodeURIComponent(hourTo)}`;
+    if (hourTo !== '') url += `&hour_to=${encodeURIComponent(hourTo)}`;
 
-    // Solo filtrar por fecha si el backup puede contener otro día (nombre distinto al chip)
     const backupDayMatch = histState.selectedFile?.match(/BACKUP_(\d{4})(\d{2})(\d{2})_/);
     const backupDay = backupDayMatch
         ? `${backupDayMatch[1]}-${backupDayMatch[2]}-${backupDayMatch[3]}`
@@ -1164,37 +1267,104 @@ async function loadHistData() {
     try {
         const r = await fetch(url);
         const result = await r.json();
-
         if (!result.success) {
             showHistStatus('error', `❌ ${result.error || 'Error al cargar el backup.'}`);
-            document.getElementById('btn-hist-load').disabled = false;
+            updateHistLoadButton();
             return;
         }
 
         histState.data = result.data;
-        document.getElementById('btn-hist-load').disabled = false;
-
-        // Construir descripción del contexto
         const dayObj = histState.backupsByDate.find(d => d.date === histState.selectedDate);
         const dayLabel = dayObj ? (dayObj.is_today ? 'Hoy' : dayObj.label) : histState.selectedDate;
         let rangeLabel = '';
         if (hourFrom !== '' && hourTo !== '') rangeLabel = ` · ${hourFrom}:00 – ${hourTo}:59`;
         else if (hourFrom !== '') rangeLabel = ` · desde ${hourFrom}:00`;
-        else if (hourTo   !== '') rangeLabel = ` · hasta ${hourTo}:59`;
+        else if (hourTo !== '') rangeLabel = ` · hasta ${hourTo}:59`;
 
         const stats = result.data.stats;
         showHistStatus('loaded', `✅ ${formatNumber(stats.total)} registros · ${formatNumber(stats.jobs_unicos)} jobs · ${formatNumber(stats.jobs_con_brea)} quiebras`);
-
-        // Banner
         document.getElementById('hist-banner-title').textContent = `Visualizando: ${dayLabel}${rangeLabel}`;
-        document.getElementById('hist-banner-sub').textContent   = `Archivo: ${histState.selectedFile}`;
+        document.getElementById('hist-banner-sub').textContent = `Archivo: ${histState.selectedFile}`;
         document.getElementById('hist-banner').classList.remove('hidden');
-
         renderHistContent(result.data);
-    } catch(e) {
+        updateHistLoadButton();
+    } catch (e) {
         showHistStatus('error', `❌ Error de conexión: ${e.message}`);
-        document.getElementById('btn-hist-load').disabled = false;
+        updateHistLoadButton();
     }
+}
+
+async function loadHistRangeData(hourFrom, hourTo) {
+    if (!histState.dateFrom || !histState.dateTo) return;
+
+    showHistStatus('loading', `Cargando rango ${histState.dateFrom} → ${histState.dateTo}...`);
+    document.getElementById('btn-hist-load').disabled = true;
+
+    let url = `api.php?action=backup_range&date_from=${encodeURIComponent(histState.dateFrom)}&date_to=${encodeURIComponent(histState.dateTo)}`;
+    if (hourFrom !== '') url += `&hour_from=${encodeURIComponent(hourFrom)}`;
+    if (hourTo !== '') url += `&hour_to=${encodeURIComponent(hourTo)}`;
+
+    try {
+        const r = await fetch(url);
+        const result = await r.json();
+        if (!result.success) {
+            showHistStatus('error', `❌ ${result.error || 'Error al cargar el rango.'}`);
+            updateHistLoadButton();
+            return;
+        }
+
+        histState.data = result.data;
+        const meta = result.data.range_meta || {};
+        const stats = result.data.stats;
+        let hourLabel = '';
+        if (hourFrom !== '' && hourTo !== '') hourLabel = ` · ${hourFrom}:00–${hourTo}:59`;
+        else if (hourFrom !== '') hourLabel = ` · desde ${hourFrom}:00`;
+        else if (hourTo !== '') hourLabel = ` · hasta ${hourTo}:59`;
+
+        showHistStatus('loaded',
+            `✅ ${formatNumber(meta.days_with_data || 0)} días · ${formatNumber(stats.total)} registros · ${formatNumber(stats.jobs_con_brea)} órdenes c/quiebra`
+        );
+        document.getElementById('hist-banner-title').textContent =
+            `Rango: ${histState.dateFrom} → ${histState.dateTo}${hourLabel}`;
+        document.getElementById('hist-banner-sub').textContent =
+            `${meta.days_with_data || 0} días con datos · ${meta.duplicates_removed || 0} duplicados eliminados · ${meta.files_loaded?.length || 0} fuentes`;
+        document.getElementById('hist-banner').classList.remove('hidden');
+        renderHistContent(result.data);
+        updateHistLoadButton();
+    } catch (e) {
+        showHistStatus('error', `❌ Error de conexión: ${e.message}`);
+        updateHistLoadButton();
+    }
+}
+
+
+function renderHistDailyCompareTable(statsByDay) {
+    const entries = Object.entries(statsByDay || {}).sort((a, b) => b[0].localeCompare(a[0]));
+    if (entries.length < 2) return '';
+    const rows = entries.map(([date, s]) => {
+        const label = date.split('-').reverse().join('/');
+        return `<tr>
+            <td><strong>${escapeHtml(label)}</strong></td>
+            <td>${formatNumber(s.total)}</td>
+            <td>${formatNumber(s.jobs_unicos)}</td>
+            <td style="color:#ef4444;font-weight:600;">${formatNumber(s.jobs_con_brea)}</td>
+            <td>${formatNumber(s.total_lentes_brea || 0)}</td>
+            <td>${(s.brea_tasa || 0).toFixed(1)}%</td>
+        </tr>`;
+    }).join('');
+    return `
+        <div class="hist-compare-table">
+            <h3><i class="fas fa-table" style="color:#3b82f6;"></i> Comparativa por día</h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>Fecha</th><th>Registros</th><th>Jobs</th>
+                        <th>Órdenes c/quiebra</th><th>Lentes quiebra</th><th>Tasa</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
 }
 
 /**
@@ -1203,18 +1373,24 @@ async function loadHistData() {
 function renderHistContent(data) {
     const stats    = data.stats;
     const breakages= data.breakages || [];
-    const records  = data.records   || [];
+    const meta     = data.range_meta || null;
+    const compareHtml = renderHistDailyCompareTable(data.stats_by_day);
+    const kpiDevices = meta
+        ? `<div class="hist-kpi-card"><h4>Días con datos</h4><p>${formatNumber(meta.days_with_data)}</p></div>`
+        : `<div class="hist-kpi-card"><h4>Dispositivos</h4><p>${formatNumber(stats.dispositivos)}</p></div>`;
 
     const container = document.getElementById('hist-content');
     container.innerHTML = `
+        ${compareHtml}
         <!-- KPIs -->
         <div class="hist-kpi-row">
             <div class="hist-kpi-card"><h4>Total Registros</h4><p>${formatNumber(stats.total)}</p></div>
             <div class="hist-kpi-card"><h4>Jobs Únicos</h4><p>${formatNumber(stats.jobs_unicos)}</p></div>
-            <div class="hist-kpi-card red"><h4>Jobs c/Quiebra</h4><p>${formatNumber(stats.jobs_con_brea)}</p></div>
+            <div class="hist-kpi-card red"><h4>Órdenes c/Quiebra</h4><p>${formatNumber(stats.jobs_con_brea)}</p></div>
+            <div class="hist-kpi-card red"><h4>Lentes Quebrados</h4><p>${formatNumber(stats.total_lentes_brea || 0)}</p></div>
             <div class="hist-kpi-card"><h4>Tasa Quiebra</h4><p>${stats.brea_tasa.toFixed(1)}%</p></div>
             <div class="hist-kpi-card"><h4>Operadores</h4><p>${formatNumber(stats.usuarios)}</p></div>
-            <div class="hist-kpi-card"><h4>Dispositivos</h4><p>${formatNumber(stats.dispositivos)}</p></div>
+            ${kpiDevices}
         </div>
 
         <!-- Gráficas -->
@@ -1386,13 +1562,19 @@ function showHistStatus(type, text) {
 function resetHistFilters() {
     histState.selectedDate = null;
     histState.selectedFile = null;
+    histState.dateFrom = null;
+    histState.dateTo = null;
+    histState.mode = 'day';
     histState.data = null;
+    setHistMode('day');
     renderHistDayChips();
     const sel = document.getElementById('hist-backup-select');
     if (sel) sel.innerHTML = '<option value="">— Seleccionar día primero —</option>';
     const hf = document.getElementById('hist-hour-from'); if (hf) hf.value = '';
     const ht = document.getElementById('hist-hour-to');   if (ht) ht.value = '';
-    document.getElementById('btn-hist-load').disabled = true;
+    const df = document.getElementById('hist-date-from'); if (df) df.value = '';
+    const dt = document.getElementById('hist-date-to');   if (dt) dt.value = '';
+    updateHistLoadButton();
     const bar = document.getElementById('hist-status-bar');
     if (bar) bar.className = 'hist-status-bar hidden';
     renderHistEmpty();
@@ -1402,9 +1584,10 @@ function renderHistEmpty() {
     document.getElementById('hist-content').innerHTML = `
         <div class="hist-empty">
             <i class="fas fa-calendar-alt" style="color:#cbd5e1;"></i>
-            <h3>Selecciona un día para comenzar</h3>
-            <p>Elige un backup de la lista superior para visualizar datos históricos.<br>
-               Hoy muestra el backup más reciente. Días anteriores muestran el respaldo diario oficial (23:59).</p>
+            <h3>Selecciona un período</h3>
+            <p><strong>Un día:</strong> elige un chip y un backup.<br>
+               <strong>Rango / Mes:</strong> fechas o atajos (7, 30 días, este mes).<br>
+               Hoy usa datos en vivo; días pasados usan backup oficial 23:59.</p>
         </div>`;
 }
 

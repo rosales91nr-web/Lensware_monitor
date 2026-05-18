@@ -894,10 +894,69 @@
         }
         .btn-hist-close:hover { background: #dc2626; }
 
+        .hist-mode-toggle {
+            display: inline-flex;
+            gap: 6px;
+            padding: 4px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            margin-bottom: 16px;
+        }
+        .hist-mode-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            background: transparent;
+            color: #64748b;
+            transition: all 0.2s;
+        }
+        .hist-mode-btn.active {
+            background: white;
+            color: #1d4ed8;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .hist-mode-panel.hidden { display: none !important; }
+        .hist-day-fields {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-end;
+            width: 100%;
+        }
+        .hist-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .hist-preset-btn {
+            padding: 6px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: white;
+            font-size: 11px;
+            font-weight: 600;
+            color: #475569;
+            cursor: pointer;
+        }
+        .hist-preset-btn:hover { border-color: #3b82f6; color: #1d4ed8; }
+        .hist-date-input {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 13px;
+            min-width: 150px;
+        }
+        .hist-compare-table { margin-bottom: 24px; }
+        .hist-compare-table h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #1e293b; }
+
         /* KPI mini para histórico */
         .hist-kpi-row {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
             gap: 14px;
             margin-bottom: 20px;
         }
@@ -1171,8 +1230,15 @@
             <!-- Panel de selección -->
             <div class="hist-panel">
                 <h3><i class="fas fa-filter" style="color:#3b82f6;"></i> Seleccionar período</h3>
+
+                <div class="hist-mode-toggle">
+                    <button type="button" class="hist-mode-btn active" data-hist-mode="day" id="hist-mode-day-btn">Un día</button>
+                    <button type="button" class="hist-mode-btn" data-hist-mode="range" id="hist-mode-range-btn">Rango / Mes</button>
+                </div>
+
                 <div class="hist-controls">
 
+                    <div id="hist-mode-day" class="hist-mode-panel hist-day-fields">
                     <!-- Selector de fecha rápida por día disponible -->
                     <div class="hist-field" style="flex:1;min-width:280px;">
                         <label>Día (backups disponibles)</label>
@@ -1187,6 +1253,26 @@
                         <select id="hist-backup-select" class="filter-select" style="min-width:260px;">
                             <option value="">— Seleccionar día primero —</option>
                         </select>
+                    </div>
+                    </div>
+
+                    <div id="hist-mode-range" class="hist-mode-panel hidden" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;width:100%;">
+                        <div class="hist-field">
+                            <label>Desde</label>
+                            <input type="date" id="hist-date-from" class="hist-date-input">
+                        </div>
+                        <div class="hist-field">
+                            <label>Hasta</label>
+                            <input type="date" id="hist-date-to" class="hist-date-input">
+                        </div>
+                        <div class="hist-field">
+                            <label>Atajos</label>
+                            <div class="hist-presets">
+                                <button type="button" class="hist-preset-btn" data-hist-preset="7">7 días</button>
+                                <button type="button" class="hist-preset-btn" data-hist-preset="30">30 días</button>
+                                <button type="button" class="hist-preset-btn" data-hist-preset="month">Este mes</button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Rango horario -->

@@ -100,59 +100,20 @@ try {
         // GET api.php?action=backups_by_date
         // ------------------------------------------------------------------ //
         case 'backups_by_date':
-            $all = listBackups(); // ya ordenados por modified desc
-
-            // Extraemos fecha de cada backup del nombre: BACKUP_YYYYMMDD_...
-            // o del campo modified como fallback
-            $byDate = [];
-            foreach ($all as $b) {
-                $name = $b['filename'];
-                // Intentar extraer fecha del nombre: BACKUP_20250517_... o BACKUP_20250517_2359_...
-                if (preg_match('/BACKUP_(\d{4})(\d{2})(\d{2})_/', $name, $m)) {
-                    $dateKey = "{$m[1]}-{$m[2]}-{$m[3]}";
-                } else {
-                    $dateKey = substr($b['modified'], 0, 10);
-                }
-                $byDate[$dateKey][] = $b;
-            }
-
-            // Ordenar fechas descendente
-            krsort($byDate);
-
-            // Para el histórico solo necesitamos:
-            // - Hoy: el backup más reciente (primero en la lista de hoy, ya que listBackups() ordena desc)
-            // - Días anteriores: solo el _2359_ (el diario). Si no existe _2359_, el más reciente de ese día.
-            $today = (new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica')))->format('Y-m-d');
-
+            $byDate = groupBackupsByDateFromList(listBackups());
+            $today  = appTodayDate();
             $result = [];
+
             foreach ($byDate as $date => $backups) {
-                if ($date === $today) {
-                    // Hoy: el más reciente disponible (primero ya que está desc)
-                    $result[] = [
-                        'date'     => $date,
-                        'label'    => 'Hoy',
-                        'is_today' => true,
-                        'backup'   => $backups[0],
-                        'all'      => $backups,  // todos los de hoy para selector por hora
-                    ];
-                } else {
-                    // Días anteriores: preferir el _2359_ (diario oficial)
-                    $daily = null;
-                    foreach ($backups as $b) {
-                        if (str_contains($b['filename'], '_2359_')) {
-                            $daily = $b;
-                            break;
-                        }
-                    }
-                    $chosen = $daily ?? $backups[0];
-                    $result[] = [
-                        'date'     => $date,
-                        'label'    => date('d/m/Y', strtotime($date)),
-                        'is_today' => false,
-                        'backup'   => $chosen,
-                        'all'      => $backups,
-                    ];
-                }
+                $isToday = ($date === $today);
+                $chosen  = pickOfficialBackupMeta($backups, $isToday);
+                $result[] = [
+                    'date'     => $date,
+                    'label'    => $isToday ? 'Hoy' : date('d/m/Y', strtotime($date)),
+                    'is_today' => $isToday,
+                    'backup'   => $chosen,
+                    'all'      => $backups,
+                ];
             }
 
             respondJson(['success' => true, 'data' => $result]);
@@ -189,17 +150,13 @@ try {
                 }));
             }
 
-            // Filtro de rango horario
             $hourFrom = $_GET['hour_from'] ?? '';
             $hourTo   = $_GET['hour_to']   ?? '';
-            if ($hourFrom !== '' || $hourTo !== '') {
-                $from = $hourFrom !== '' ? (int)$hourFrom : 0;
-                $to   = $hourTo   !== '' ? (int)$hourTo   : 23;
-                $records = array_values(array_filter($records, function($r) use ($from, $to) {
-                    return recordHour($r['time_raw'] ?? '') >= $from
-                        && recordHour($r['time_raw'] ?? '') <= $to;
-                }));
-            }
+            $records  = filterRecordsByHourRange(
+                $records,
+                $hourFrom !== '' ? (int) $hourFrom : null,
+                $hourTo !== '' ? (int) $hourTo : null
+            );
 
             if (empty($records)) {
                 $totalInFile = count($data['records']);
@@ -229,6 +186,48 @@ try {
             ];
 
             respondJson(['success' => true, 'data' => $result]);
+
+        // ------------------------------------------------------------------ //
+        // Rango de fechas: fusiona backups oficiales por día (hasta BACKUP_RANGE_MAX_DAYS).
+        // GET api.php?action=backup_range&date_from=2025-05-01&date_to=2025-05-17
+        // Opcional: hour_from, hour_to (0-23)
+        // ------------------------------------------------------------------ //
+        case 'backup_range':
+            $dateFrom = trim($_GET['date_from'] ?? '');
+            $dateTo   = trim($_GET['date_to'] ?? '');
+            $hourFrom = trim($_GET['hour_from'] ?? '');
+            $hourTo   = trim($_GET['hour_to'] ?? '');
+
+            if ($dateFrom === '' || $dateTo === '') {
+                respondJson(['success' => false, 'error' => 'Parámetros date_from y date_to requeridos (YYYY-MM-DD)'], 400);
+            }
+
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateFrom) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTo)) {
+                respondJson(['success' => false, 'error' => 'Formato de fecha inválido. Use YYYY-MM-DD'], 400);
+            }
+
+            if ($hourFrom !== '' && $hourTo !== '' && (int) $hourFrom > (int) $hourTo) {
+                respondJson(['success' => false, 'error' => 'La hora de inicio no puede ser mayor que la hora de fin'], 400);
+            }
+
+            $payload = buildBackupRangePayload($dateFrom, $dateTo, $hourFrom, $hourTo);
+
+            if (is_array($payload) && isset($payload['_error']) && $payload['_error'] === 'max_days') {
+                respondJson([
+                    'success' => false,
+                    'error'   => "El rango máximo es de {$payload['max_days']} días (solicitaste {$payload['requested']}).",
+                    'max_days'=> $payload['max_days'],
+                ], 400);
+            }
+
+            if (!$payload || empty($payload['records'])) {
+                respondJson([
+                    'success' => false,
+                    'error'   => 'Sin registros en ese rango de fechas/horas. Prueba ampliar el período o quitar el filtro horario.',
+                ], 404);
+            }
+
+            respondJson(['success' => true, 'data' => $payload]);
 
         // ------------------------------------------------------------------ //
         case 'download_backup':
