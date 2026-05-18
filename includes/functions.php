@@ -360,9 +360,6 @@ function calculateStats(array $records): array {
             $jobsBrea[$r['job']] = true;
             $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
 
-            // Gráfica de causas: sumar lentes (R=1, L=1, R/L=2)
-            $byCause[$cause] = ($byCause[$cause] ?? 0) + $lensWeight;
-
             // Top jobs: por órdenes únicas (job + causa)
             $causeKey = $r['job'] . '|' . $cause;
             if (!isset($breaJobCausaSeen[$causeKey])) {
@@ -375,8 +372,15 @@ function calculateStats(array $records): array {
         }
     }
 
-    arsort($byDevice); arsort($byUser); arsort($byCause);
-    arsort($breaPerJob);
+    arsort($byDevice); arsort($byUser); arsort($breaPerJob);
+
+    // Gráfica de causas: 1 por orden única (misma lógica que tabla de quiebras)
+    $byCause = [];
+    foreach (getBreakages($records) as $r) {
+        $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
+        $byCause[$cause] = ($byCause[$cause] ?? 0) + 1;
+    }
+    arsort($byCause);
 
     $topJobsBrea = [];
     foreach (array_slice($breaPerJob, 0, 10, true) as $job => $count) {
@@ -400,7 +404,7 @@ function calculateStats(array $records): array {
         'por_hora'           => $byHour,
         'por_device'         => $byDevice,
         'por_user'           => $byUser,
-        'brea_causa'         => $byCause,           // causas por lentes (R/L)
+        'brea_causa'         => $byCause,           // causas por órdenes únicas (tabla quiebras)
         'brea_device'        => $breaDev,
         'brea_por_user'      => $breaUser,
         'top_jobs_brea'      => $topJobsBrea,

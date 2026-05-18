@@ -1044,7 +1044,7 @@
                     <canvas id="chart-status" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Top Causas de Quiebra</h3><span class="chart-meta"></span></div>
+                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3><span class="chart-meta" id="causes-meta">por orden</span></div>
                     <canvas id="chart-causes" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
             </div>

@@ -320,16 +320,6 @@ function lensCountFromRecord(r) {
     return lensCountFromSide(r?.side_label || r?.side || '');
 }
 
-/** Top causas + bucket Otros para que el total coincida con lentes quebrados. */
-function buildCauseChartEntries(breaCausa, maxSlices = 8) {
-    const sorted = Object.entries(breaCausa || {}).sort((a, b) => b[1] - a[1]);
-    if (sorted.length <= maxSlices) return sorted;
-    const top = sorted.slice(0, maxSlices - 1);
-    const otros = sorted.slice(maxSlices - 1).reduce((s, [, v]) => s + v, 0);
-    if (otros > 0) top.push(['Otros', otros]);
-    return top;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Gráficas principales (en vivo)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -366,11 +356,14 @@ function renderCharts(stats) {
     }
     document.getElementById('status-meta').textContent = `${statusEntries.length} estados`;
 
-    // Causes chart (lentes; incluye "Otros" si hay más de 8 causas)
-    const causeEntries = buildCauseChartEntries(stats.brea_causa, 8);
-    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#64748B'];
+    // Causes chart: todas las causas, 1 por orden única (suma = quiebras en tabla)
+    const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
+    const causeTotal = causeEntries.reduce((s, [, v]) => s + v, 0);
+    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
     if (window.causesChart) window.causesChart.destroy();
     const ctxC = document.getElementById('chart-causes')?.getContext('2d');
+    const causesMeta = document.getElementById('causes-meta');
+    if (causesMeta) causesMeta.textContent = causeTotal ? `${formatNumber(causeTotal)} órdenes` : 'por orden';
     if (ctxC && causeEntries.length) {
         window.causesChart = new Chart(ctxC, {
             type: 'doughnut',
@@ -1264,8 +1257,8 @@ function renderHistCharts(stats) {
     }
 
     // Causes
-    const causeEntries = buildCauseChartEntries(stats.brea_causa, 8);
-    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#64748B'];
+    const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
+    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
     if (histState.chartCauses) histState.chartCauses.destroy();
     const ctxC = document.getElementById('hist-chart-causes')?.getContext('2d');
     if (ctxC && causeEntries.length) {
