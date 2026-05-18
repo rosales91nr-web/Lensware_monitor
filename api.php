@@ -1,8 +1,16 @@
 <?php
 // api.php - API REST (Railway-ready) + Histórico de Backups
-// CORREGIDO: Las estadísticas de quiebra ahora cuentan ÓRDENES ÚNICAS, no eventos
+// CORREGIDO: Versión compatible con functions.php actualizado
+
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
+
+// Healthcheck para Railway (IMPORTANTE)
+if ($_SERVER['REQUEST_URI'] === '/health' || $_SERVER['PATH_INFO'] === '/health') {
+    http_response_code(200);
+    echo 'OK';
+    exit;
+}
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -163,11 +171,11 @@ try {
                 ], 404);
             }
 
-            // 🔧 IMPORTANTE: Usar calculateStatsWithUniqueBreakages para contar órdenes únicas
+            // 🔧 CORREGIDO: Usar las funciones correctas que existen en functions.php
             $result = [
                 'records'      => $records,
-                'stats'        => calculateStatsWithUniqueBreakages($records),
-                'breakages'    => getUniqueBreakagesByOrder($records),
+                'stats'        => calculateStatsCorrected($records),    // ← Nombre correcto
+                'breakages'    => getBreakagesConsolidated($records),   // ← Nombre correcto
                 'device_stats' => getDeviceStats($records),
                 'filename'     => $filename,
                 'source'       => 'backup',
@@ -325,7 +333,7 @@ try {
 
             if ($type === 'breakages') {
                 // Exportar quiebras como ÓRDENES ÚNICAS (consolidadas)
-                $uniqueBreakages = getUniqueBreakagesByOrder($cache['records']);
+                $uniqueBreakages = getBreakagesConsolidated($cache['records']);
                 fputcsv($output, ['Job', 'Fecha', 'Hora', 'OD/OI', 'Causa', 'Usuario', 'Lente', 'Blank description']);
                 foreach ($uniqueBreakages as $b) {
                     fputcsv($output, [
