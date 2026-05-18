@@ -412,39 +412,55 @@ function calculateStats(array $records): array {
 }
 
 /**
- * Devuelve quiebras unicas por orden.
- * Si un Job tiene R y L ambos en BREA, se consolidan en una sola fila con side_label = 'OD+OI'.
+ * Devuelve quiebras únicas por orden y momento (job + fecha + hora).
+ * Si en el mismo momento hay R y L en BREA, se consolidan en OD+OI.
  */
 function getBreakages(array $records): array {
     $breaRecords = array_filter($records, fn($r) => $r['is_breakage']);
 
-    // Agrupar por job
-    $byJob = [];
+    $byEvent = [];
     foreach ($breaRecords as $r) {
-        $byJob[$r['job']][] = $r;
+        $key = $r['job'] . '|' . ($r['date_raw'] ?? '') . '|' . ($r['time_raw'] ?? '');
+        $byEvent[$key][] = $r;
     }
 
     $consolidated = [];
-    foreach ($byJob as $job => $rows) {
+    foreach ($byEvent as $rows) {
         if (count($rows) === 1) {
-            $consolidated[] = $rows[0];
-        } else {
-            // Multiples filas: consolidar lados
-            $base  = $rows[0];
-            $sides = array_unique(array_map(fn($r) => $r['side'], $rows));
-            sort($sides);
-            if (in_array('R', $sides) && in_array('L', $sides)) {
-                $base['side']       = 'R/L';
-                $base['side_label'] = 'OD+OI';
-            } else {
-                $base['side']       = implode('+', $sides);
-                $base['side_label'] = implode('+', array_map(
-                    fn($s) => match($s) { 'R' => 'OD', 'L' => 'OI', default => $s },
-                    $sides
-                ));
+            $row = $rows[0];
+            $n = strtoupper(str_replace([' ', '\\'], '', $row['side'] ?? ''));
+            if (in_array($n, ['R/L', 'RL', 'OD+OI', 'OI+OD'], true)) {
+                $row['side']       = 'R/L';
+                $row['side_label'] = 'OD+OI';
             }
-            $consolidated[] = $base;
+            $consolidated[] = $row;
+            continue;
         }
+
+        $base  = $rows[0];
+        $normSides = array_unique(array_map(function ($r) {
+            return strtoupper(str_replace([' ', '\\'], '', $r['side'] ?? ''));
+        }, $rows));
+
+        $hasR = in_array('R', $normSides, true) || in_array('OD', $normSides, true);
+        $hasL = in_array('L', $normSides, true) || in_array('OI', $normSides, true);
+        $hasRl = !empty(array_intersect($normSides, ['R/L', 'RL', 'OD+OI', 'OI+OD']));
+
+        if ($hasRl || ($hasR && $hasL)) {
+            $base['side']       = 'R/L';
+            $base['side_label'] = 'OD+OI';
+        } else {
+            $labels = [];
+            foreach ($rows as $r) {
+                $labels[] = $r['side_label'] ?: match (strtoupper($r['side'] ?? '')) {
+                    'R', 'OD' => 'OD',
+                    'L', 'OI' => 'OI',
+                    default => $r['side'] ?? '',
+                };
+            }
+            $base['side_label'] = implode('+', array_unique(array_filter($labels)));
+        }
+        $consolidated[] = $base;
     }
 
     // Ordenar por fecha+hora descendente

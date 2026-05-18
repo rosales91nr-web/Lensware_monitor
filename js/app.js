@@ -87,6 +87,12 @@ function setupEventListeners() {
     // Filtros de breakages
     document.getElementById('filter-job')?.addEventListener('input',    () => renderBreakages());
     document.getElementById('filter-user')?.addEventListener('change',  () => renderBreakages());
+    document.getElementById('breakages-tbody')?.addEventListener('click', e => {
+        const tr = e.target.closest('tr[data-brea-idx]');
+        if (!tr) return;
+        const idx = parseInt(tr.dataset.breaIdx, 10);
+        showDetailFromRecord(breakagesListView[idx]);
+    });
 
     // Paginación
     document.getElementById('prev-page')?.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderActivity(); } });
@@ -607,8 +613,9 @@ function renderBreakages() {
     });
     const tbody = document.getElementById('breakages-tbody');
     if (!tbody) return;
-    tbody.innerHTML = data.map(r => `
-        <tr class="breakage" onclick="showDetail('${escapeHtml(r.job)}','${escapeHtml(r.date_raw)}','${escapeHtml(r.time_raw)}')" style="cursor:pointer;">
+    breakagesListView = data;
+    tbody.innerHTML = data.map((r, i) => `
+        <tr class="breakage" data-brea-idx="${i}" style="cursor:pointer;">
             <td><strong>${escapeHtml(r.job)}</strong></td>
             <td>${escapeHtml(r.date_raw)}</td>
             <td>${escapeHtml(r.time_raw)}</td>
@@ -879,14 +886,77 @@ async function showDeviceDetail(deviceName) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Show detail modal
 // ─────────────────────────────────────────────────────────────────────────────
-function showDetail(job, date, time) {
+let breakagesListView = [];
+
+function mergeBreakageSides(rows) {
+    if (!rows?.length) return null;
+    if (rows.length === 1) return rows[0];
+    const base = { ...rows[0] };
+    const norm = s => String(s || '').trim().toUpperCase().replace(/[\s\\]/g, '');
+    const sides = new Set(rows.map(r => norm(r.side)));
+    const hasR = sides.has('R') || sides.has('OD');
+    const hasL = sides.has('L') || sides.has('OI');
+    const hasRl = ['R/L', 'RL', 'OD+OI', 'OI+OD'].some(x => sides.has(x));
+    if (hasRl || (hasR && hasL)) {
+        base.side = 'R/L';
+        base.side_label = 'OD+OI';
+    }
+    return base;
+}
+
+/** Abre el modal con el mismo registro que muestra la tabla de quiebras. */
+function showDetailFromRecord(record) {
+    if (!record) return;
     const pool = [...(appData.records || []), ...(searchState.allRecords || [])];
-    const breaRecord = pool.find(r => r.job === job && r.date_raw === date && r.time_raw === time && r.is_breakage);
+    const raw = pool.filter(r =>
+        r.job === record.job &&
+        r.is_breakage &&
+        r.date_raw === record.date_raw &&
+        r.time_raw === record.time_raw
+    );
+    const merged = mergeBreakageSides(raw) || record;
+    const display = {
+        ...merged,
+        side_label: record.side_label || merged.side_label,
+        side: record.side || merged.side,
+        reason_descr: record.reason_descr || merged.reason_descr,
+        reason: record.reason || merged.reason,
+        lens_desc: record.lens_desc || merged.lens_desc,
+        blank_desc: record.blank_desc || merged.blank_desc,
+        user: record.user || merged.user,
+        device: record.device || merged.device,
+    };
+    renderDetailModal(display);
+}
+
+function showDetail(job, date, time) {
+    const fromBrea = (appData.breakages || []).find(r =>
+        r.job === job && r.date_raw === date && r.time_raw === time
+    );
+    if (fromBrea) {
+        showDetailFromRecord(fromBrea);
+        return;
+    }
+
+    const pool = [...(appData.records || []), ...(searchState.allRecords || [])];
+    const rawBrea = pool.filter(r =>
+        r.job === job && r.date_raw === date && r.time_raw === time && r.is_breakage
+    );
+    if (rawBrea.length) {
+        showDetailFromRecord(mergeBreakageSides(rawBrea) || rawBrea[0]);
+        return;
+    }
+
     const allMatches = pool.filter(r => r.job === job && r.date_raw === date && r.time_raw === time);
-    const record = breaRecord || allMatches.find(r=>r.is_breakage) || allMatches[0];
+    const record = allMatches.find(r => r.is_breakage) || allMatches[0];
+    if (!record) return;
+    renderDetailModal(record);
+}
+
+function renderDetailModal(record) {
     if (!record) return;
     const modal = document.getElementById('modal-detail');
-    document.getElementById('detail-title').textContent = `${record.is_breakage?'⚠️ QUIEBRA':'📋 Registro'} - Job ${record.job}`;
+    document.getElementById('detail-title').textContent = `${record.is_breakage ? '⚠️ QUIEBRA' : '📋 Registro'} - Job ${record.job}`;
     document.getElementById('detail-body').innerHTML = `
         <div style="display:flex;flex-direction:column;gap:16px;">
             <div style="background:#f8fafc;padding:16px;border-radius:16px;">
