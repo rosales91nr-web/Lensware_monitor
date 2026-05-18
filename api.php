@@ -3,7 +3,7 @@
 // CORREGIDO: Versión compatible con functions.php actualizado
 
 error_reporting(E_ALL);
-ini_set('display_errors', 1);  para ver errores
+ini_set('display_errors', 1);  // para ver errores
 
 // Healthcheck para Railway (IMPORTANTE)
 if ($_SERVER['REQUEST_URI'] === '/health' || $_SERVER['PATH_INFO'] === '/health') {
