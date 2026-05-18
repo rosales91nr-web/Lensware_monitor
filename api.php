@@ -1,5 +1,6 @@
 <?php
 // api.php - API REST (Railway-ready) + Histórico de Backups
+// CORREGIDO: Las estadísticas de quiebra ahora cuentan ÓRDENES ÚNICAS, no eventos
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 
@@ -95,10 +96,6 @@ try {
             respondJson(['success' => true, 'backups' => listBackups()]);
 
         // ------------------------------------------------------------------ //
-        // Retorna backups agrupados por fecha (YYYY-MM-DD), incluyendo
-        // el backup más reciente de hoy y el único _2359_ del día anterior.
-        // GET api.php?action=backups_by_date
-        // ------------------------------------------------------------------ //
         case 'backups_by_date':
             $byDate = groupBackupsByDateFromList(listBackups());
             $today  = appTodayDate();
@@ -119,10 +116,6 @@ try {
             respondJson(['success' => true, 'data' => $result]);
 
         // ------------------------------------------------------------------ //
-        // Procesa un backup específico por nombre de archivo y retorna sus datos.
-        // GET api.php?action=backup_data&file=BACKUP_20250517_123456_UNI_PROD...csv
-        // Opcionalmente: &date_filter=2025-05-17&hour_from=08&hour_to=16
-        // ------------------------------------------------------------------ //
         case 'backup_data':
             $filename = basename($_GET['file'] ?? '');
             if ($filename === '' || !str_starts_with($filename, 'BACKUP_')) {
@@ -141,7 +134,6 @@ try {
 
             $records = $data['records'];
 
-            // Filtro de fecha si se especifica
             $dateFilter = trim($_GET['date_filter'] ?? '');
             if ($dateFilter !== '') {
                 $records = array_values(array_filter($records, function($r) use ($dateFilter) {
@@ -151,7 +143,7 @@ try {
             }
 
             $hourFrom = $_GET['hour_from'] ?? '';
-            $hourTo   = $_GET['hour_to']   ?? '';
+            $hourTo   = $_GET['hour_to'] ?? '';
             $records  = filterRecordsByHourRange(
                 $records,
                 $hourFrom !== '' ? (int) $hourFrom : null,
@@ -171,10 +163,11 @@ try {
                 ], 404);
             }
 
+            // 🔧 IMPORTANTE: Usar calculateStatsWithUniqueBreakages para contar órdenes únicas
             $result = [
                 'records'      => $records,
-                'stats'        => calculateStats($records),
-                'breakages'    => getBreakages($records),
+                'stats'        => calculateStatsWithUniqueBreakages($records),
+                'breakages'    => getUniqueBreakagesByOrder($records),
                 'device_stats' => getDeviceStats($records),
                 'filename'     => $filename,
                 'source'       => 'backup',
@@ -187,10 +180,6 @@ try {
 
             respondJson(['success' => true, 'data' => $result]);
 
-        // ------------------------------------------------------------------ //
-        // Rango de fechas: fusiona backups oficiales por día (hasta BACKUP_RANGE_MAX_DAYS).
-        // GET api.php?action=backup_range&date_from=2025-05-01&date_to=2025-05-17
-        // Opcional: hour_from, hour_to (0-23)
         // ------------------------------------------------------------------ //
         case 'backup_range':
             $dateFrom = trim($_GET['date_from'] ?? '');
@@ -335,8 +324,10 @@ try {
             fwrite($output, "\xEF\xBB\xBF");
 
             if ($type === 'breakages') {
+                // Exportar quiebras como ÓRDENES ÚNICAS (consolidadas)
+                $uniqueBreakages = getUniqueBreakagesByOrder($cache['records']);
                 fputcsv($output, ['Job', 'Fecha', 'Hora', 'OD/OI', 'Causa', 'Usuario', 'Lente', 'Blank description']);
-                foreach ($cache['breakages'] as $b) {
+                foreach ($uniqueBreakages as $b) {
                     fputcsv($output, [
                         $b['job'],        $b['date_raw'],      $b['time_raw'],
                         $b['side_label'], $b['reason_descr'] ?? '',
@@ -359,9 +350,6 @@ try {
             fclose($output);
             exit;
 
-        // ------------------------------------------------------------------ //
-        // Busca un Job en datos en vivo y en backups de días anteriores.
-        // GET api.php?action=search_job&job=267936
         // ------------------------------------------------------------------ //
         case 'search_job':
             $job = trim($_GET['job'] ?? '');
