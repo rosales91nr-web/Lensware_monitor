@@ -1,8 +1,12 @@
 <?php
 // includes/functions.php - Funciones principales (Railway-ready)
-// CORREGIDO: Unifica el conteo de quiebras por ÓRDENES ÚNICAS
+// VERSIÓN FINAL CORREGIDA - Maneja múltiples quiebras por orden/distintas horas
 
 require_once __DIR__ . '/../config.php';
+
+// =============================================================================
+// FUNCIONES DE LIMPIEZA Y NORMALIZACIÓN DE TEXTO
+// =============================================================================
 
 /** Normaliza texto del CSV a UTF-8 legible (evita Mï¿½, Ã³, etc.). */
 function sanitizeCsvField(string $value): string {
@@ -41,6 +45,10 @@ function normalizeCsvEncoding(string $raw): string {
     return mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');
 }
 
+// =============================================================================
+// FUNCIONES DE CONTEO DE LENTES
+// =============================================================================
+
 /** Lentes por fila: R/OD=1, L/OI=1, R/L u OD+OI=2. */
 function lensCountFromSide(string $side): int {
     $n = strtoupper(str_replace([' ', '\\'], '', trim($side)));
@@ -65,6 +73,10 @@ function lensCountFromSide(string $side): int {
 function lensCountFromRecord(array $r): int {
     return lensCountFromSide($r['side_label'] ?? $r['side'] ?? '');
 }
+
+// =============================================================================
+// FUNCIONES DE BÚSQUEDA DE ARCHIVOS
+// =============================================================================
 
 function findLatestCSV(): ?string {
     $folder = WATCH_FOLDER;
@@ -110,6 +122,10 @@ function displayFilename(string $filepath): string {
     return $name;
 }
 
+// =============================================================================
+// PROCESAMIENTO DE CSV Y CONSTRUCCIÓN DE PAYLOAD
+// =============================================================================
+
 /** Construye el payload del dashboard (registros, stats, quiebras, etc.). */
 function buildLiveDataPayload(string $filepath): ?array {
     if (!file_exists($filepath)) return null;
@@ -117,13 +133,12 @@ function buildLiveDataPayload(string $filepath): ?array {
     $data = processCSV($filepath);
     if (!$data || empty($data['records'])) return null;
 
-    // 🔧 Usar la función CORREGIDA que cuenta órdenes únicas
     $records = $data['records'];
     
     return [
         'records'       => $records,
-        'stats'         => calculateStatsCorrected($records),  // ← FUNCIÓN CORREGIDA
-        'breakages'     => getBreakagesConsolidated($records), // ← FUNCIÓN CORREGIDA
+        'stats'         => calculateStatsCorrected($records),
+        'breakages'     => getBreakagesConsolidated($records),
         'device_stats'  => getDeviceStats($records),
         'filename'      => displayFilename($filepath),
         'source_file'   => basename($filepath),
@@ -265,6 +280,10 @@ function processCSV(string $filepath): ?array {
     return ['records' => $records, 'filename' => basename($filepath)];
 }
 
+// =============================================================================
+// FUNCIONES DE NORMALIZACIÓN DE FECHAS Y HORAS
+// =============================================================================
+
 /**
  * Normaliza la columna Date del CSV a YYYY-MM-DD.
  */
@@ -331,19 +350,29 @@ function recordHour(string $timeRaw): int {
     return (int)substr($t, 0, 2);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// FUNCIONES CORREGIDAS - Cuentan ÓRDENES ÚNICAS, no eventos
-// ══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
+// FUNCIONES CORREGIDAS - Cuentan INCIDENTES por momento específico
+// =============================================================================
 
 /**
- * 🔧 CORREGIDA: Calcula estadísticas contando ÓRDENES ÚNICAS para quiebras
- * Una orden con quiebra en OD+OI = 1 orden, NO 2 eventos
+ * 🔧 CORREGIDA: Calcula estadísticas contando INCIDENTES por momento específico
+ * 
+ * DIFERENCIAS CLAVE:
+ * - Mismo job + misma fecha + misma hora:minuto = 1 incidente (consolida OD+OI)
+ * - Mismo job + misma fecha + hora diferente = incidentes separados
+ * - Mismo job + mismo lado + hora diferente = incidentes separados
+ * 
+ * RETORNA:
+ * - jobs_con_brea: número de INCIDENTES (eventos de quiebra en el tiempo)
+ * - jobs_unicos_afectados: número de JOBS distintos que tuvieron al menos una quiebra
+ * - total_lentes_brea: suma total de lentes quebrados (OD=1, OI=1, OD+OI=2)
  */
 function calculateStatsCorrected(array $records): array {
     if (empty($records)) {
         return [
             'total' => 0,
             'jobs_unicos' => 0,
+            'jobs_unicos_afectados' => 0,
             'jobs_con_brea' => 0,
             'total_lentes_brea' => 0,
             'brea_tasa' => 0,
@@ -364,11 +393,14 @@ function calculateStatsCorrected(array $records): array {
     $usuarios = [];
     $dispositivos = [];
     
-    // Tracking por JOB (orden única)
+    // Tracking por JOB (orden única) - para jobs únicos afectados
     $jobsUnicos = [];
-    $jobsConBrea = [];           // jobs que tienen al menos una quiebra
-    $lentesPorJob = [];          // total lentes quebrados por job (1 o 2 por registro)
-    $causasPorJob = [];          // causas únicas por job
+    $jobsUnicosAfectados = [];  // jobs que tienen al menos una quiebra
+    
+    // Tracking por INCIDENTE (job + fecha + hora:minuto)
+    $incidentes = [];            // key => detalles del incidente
+    $lentesPorIncidente = [];    // lentes por incidente
+    $causasPorIncidente = [];    // causas por incidente
     
     foreach ($records as $r) {
         $status = $r['status'] ?? 'UNKNOWN';
@@ -389,37 +421,51 @@ function calculateStatsCorrected(array $records): array {
         $job = $r['job'];
         $jobsUnicos[$job] = true;
 
-        // 🔧 QUIEBRA: contar por JOB (orden única)
+        // 🔧 QUIEBRA: contar por INCIDENTE (job + fecha + hora:minuto)
         if ($r['is_breakage']) {
-            $jobsConBrea[$job] = true;
+            // Marcar este job como afectado
+            $jobsUnicosAfectados[$job] = true;
             
-            // Contar lentes por este evento (1 o 2 según side)
+            // Clave de incidente: job + fecha + hora:minuto (ignorar segundos)
+            $timeKey = substr($r['time_raw'] ?? '00:00:00', 0, 5); // "HH:MM"
+            $incidentKey = $job . '|' . ($r['date_raw'] ?? '') . '|' . $timeKey;
+            
+            // Contar lentes para este incidente
             $lensesThisEvent = lensCountFromSide($r['side_label'] ?? $r['side'] ?? '');
-            $lentesPorJob[$job] = ($lentesPorJob[$job] ?? 0) + $lensesThisEvent;
+            $lentesPorIncidente[$incidentKey] = ($lentesPorIncidente[$incidentKey] ?? 0) + $lensesThisEvent;
             
-            // Causa única por job
-            $causa = $r['reason_descr'] ?? ($r['reason'] ?? 'Sin especificar');
-            if (!isset($causasPorJob[$job])) {
-                $causasPorJob[$job] = [];
+            // Guardar detalles del incidente para la causa
+            if (!isset($causasPorIncidente[$incidentKey])) {
+                $causasPorIncidente[$incidentKey] = [];
+                $incidentes[$incidentKey] = $r;
             }
-            $causasPorJob[$job][$causa] = true;
+            $causa = $r['reason_descr'] ?? ($r['reason'] ?? 'Sin especificar');
+            $causasPorIncidente[$incidentKey][$causa] = true;
         }
     }
 
-    // Total lentes quebrados = suma de lentes por job
-    $totalLentesBrea = array_sum($lentesPorJob);
+    // Total lentes quebrados = suma de lentes por incidente
+    $totalLentesBrea = array_sum($lentesPorIncidente);
     
-    // Top jobs con más quiebras (por cantidad de eventos de quiebra, pero mostramos job)
+    // Total incidentes = cantidad de claves únicas
+    $totalIncidentes = count($incidentes);
+    
+    // Top jobs con más incidentes (por cantidad de incidentes, no por lentes)
     $topJobsBrea = [];
-    foreach ($lentesPorJob as $job => $count) {
+    $incidentesPorJob = [];
+    foreach ($incidentes as $key => $incidente) {
+        $job = $incidente['job'];
+        $incidentesPorJob[$job] = ($incidentesPorJob[$job] ?? 0) + 1;
+    }
+    foreach ($incidentesPorJob as $job => $count) {
         $topJobsBrea[] = ['job' => $job, 'count' => $count];
     }
     usort($topJobsBrea, fn($a, $b) => $b['count'] - $a['count']);
     $topJobsBrea = array_slice($topJobsBrea, 0, 10);
     
-    // Causas: contar cada job UNA VEZ por causa
+    // Causas: contar cada incidente UNA VEZ por causa
     $breaCausa = [];
-    foreach ($causasPorJob as $causas) {
+    foreach ($causasPorIncidente as $causas) {
         foreach ($causas as $causa => $dummy) {
             $breaCausa[$causa] = ($breaCausa[$causa] ?? 0) + 1;
         }
@@ -427,35 +473,42 @@ function calculateStatsCorrected(array $records): array {
     arsort($breaCausa);
     
     $totalJobs = count($jobsUnicos);
-    $totalJobsBrea = count($jobsConBrea);
-    $breaTasa = $totalJobs > 0 ? ($totalJobsBrea / $totalJobs) * 100 : 0;
+    $totalJobsAfectados = count($jobsUnicosAfectados);
+    $breaTasa = $totalJobs > 0 ? ($totalJobsAfectados / $totalJobs) * 100 : 0;
 
     return [
-        'total'              => $total,
-        'jobs_unicos'        => $totalJobs,
-        'jobs_con_brea'      => $totalJobsBrea,
-        'total_lentes_brea'  => $totalLentesBrea,
-        'brea_tasa'          => round($breaTasa, 2),
-        'usuarios'           => count($usuarios),
-        'dispositivos'       => count($dispositivos),
-        'por_status'         => $porStatus,
-        'por_hora'           => $porHora,
-        'por_device'         => $porDevice,
-        'brea_causa'         => $breaCausa,
-        'top_jobs_brea'      => $topJobsBrea,
+        'total'                   => $total,
+        'jobs_unicos'             => $totalJobs,
+        'jobs_unicos_afectados'   => $totalJobsAfectados,
+        'jobs_con_brea'           => $totalIncidentes,
+        'total_lentes_brea'       => $totalLentesBrea,
+        'brea_tasa'               => round($breaTasa, 2),
+        'usuarios'                => count($usuarios),
+        'dispositivos'            => count($dispositivos),
+        'por_status'              => $porStatus,
+        'por_hora'                => $porHora,
+        'por_device'              => $porDevice,
+        'brea_causa'              => $breaCausa,
+        'top_jobs_brea'           => $topJobsBrea,
     ];
 }
 
 /**
- * 🔧 CORREGIDA: Obtiene quiebras consolidando OD+OI en una sola fila
- * Retorna una lista de quiebras donde cada orden aparece UNA VEZ
+ * 🔧 CORREGIDA: Obtiene quiebras como INCIDENTES (no consolida diferentes momentos)
+ * 
+ * - Mismo job + misma fecha + misma hora:minuto = 1 fila (consolida OD+OI)
+ * - Mismo job + misma fecha + hora diferente = filas separadas
  */
 function getBreakagesConsolidated(array $records): array {
-    // Agrupar quiebras por job + fecha + hora (mismo momento)
+    // Agrupar por job + fecha + hora:minuto (ignorar segundos)
     $grouped = [];
     foreach ($records as $r) {
         if (!$r['is_breakage']) continue;
-        $key = $r['job'] . '|' . ($r['date_raw'] ?? '') . '|' . ($r['time_raw'] ?? '');
+        
+        // Usar hora:minuto para agrupar (mismo momento exacto)
+        $timeKey = substr($r['time_raw'] ?? '00:00:00', 0, 5); // "HH:MM"
+        $key = $r['job'] . '|' . ($r['date_raw'] ?? '') . '|' . $timeKey;
+        
         if (!isset($grouped[$key])) {
             $grouped[$key] = [];
         }
@@ -467,12 +520,12 @@ function getBreakagesConsolidated(array $records): array {
         if (count($rows) === 1) {
             $breakages[] = $rows[0];
         } else {
-            // Consolidar OD + OI en una sola fila
+            // Mismo momento: consolidar OD + OI en una sola fila
             $breakages[] = mergeBreakageRecords($rows);
         }
     }
     
-    // Ordenar por fecha descendente (más reciente primero)
+    // Ordenar por fecha+hora descendente (más reciente primero)
     usort($breakages, function($a, $b) {
         $da = ($a['date_raw'] ?? '') . ' ' . ($a['time_raw'] ?? '');
         $db = ($b['date_raw'] ?? '') . ' ' . ($b['time_raw'] ?? '');
@@ -483,7 +536,7 @@ function getBreakagesConsolidated(array $records): array {
 }
 
 /**
- * 🔧 CORREGIDA: Consolida múltiples registros de quiebra de la misma orden (OD + OI)
+ * 🔧 CORREGIDA: Consolida múltiples registros de quiebra del MISMO MOMENTO (OD + OI)
  */
 function mergeBreakageRecords(array $records): array {
     if (empty($records)) return [];
@@ -493,11 +546,9 @@ function mergeBreakageRecords(array $records): array {
     $hasR = false;
     $hasL = false;
     $reasons = [];
-    $allSides = [];
     
     foreach ($records as $r) {
         $side = $r['side_label'] ?? $r['side'] ?? '';
-        $allSides[] = $side;
         
         if (in_array($side, ['OD', 'R'])) $hasR = true;
         if (in_array($side, ['OI', 'L'])) $hasL = true;
@@ -518,7 +569,7 @@ function mergeBreakageRecords(array $records): array {
         $base['side'] = 'L';
     }
     
-    // Consolidar razón
+    // Consolidar razón (si hay múltiples causas en el mismo momento)
     if (count($reasons) > 1) {
         $base['reason_descr'] = implode(' + ', array_keys($reasons));
     } else {
@@ -528,9 +579,9 @@ function mergeBreakageRecords(array $records): array {
     return $base;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// FUNCIONES LEGACY (mantenidas por compatibilidad, pero NO recomendadas)
-// ══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
+// FUNCIONES LEGACY (mantenidas por compatibilidad)
+// =============================================================================
 
 /**
  * @deprecated Usar calculateStatsCorrected() en su lugar
@@ -588,6 +639,10 @@ function getDeviceDetails(array $records, string $deviceName): array {
     ];
 }
 
+// =============================================================================
+// FUNCIONES DE CACHÉ
+// =============================================================================
+
 function readCache(): ?array {
     if (!file_exists(CACHE_FILE)) return null;
     if ((time() - filemtime(CACHE_FILE)) > CACHE_TTL) return null;
@@ -610,6 +665,10 @@ function saveCache(array $data): bool {
     if ($json === false) { logMessage('saveCache error: ' . json_last_error_msg(), 'error'); return false; }
     return file_put_contents(CACHE_FILE, $json, LOCK_EX) !== false;
 }
+
+// =============================================================================
+// FUNCIONES DE BACKUP
+// =============================================================================
 
 function getLastBackupTimestamp(): int {
     $stateFile = __DIR__ . '/../cache/last_backup.txt';
@@ -711,9 +770,9 @@ function listBackups(): array {
     return $list;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Histórico por rango de fechas (múltiples backups)
-// ─────────────────────────────────────────────────────────────────────────────
+// =============================================================================
+// HISTÓRICO POR RANGO DE FECHAS
+// =============================================================================
 
 function appTodayDate(): string {
     return (new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica')))->format('Y-m-d');
@@ -883,9 +942,9 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
     ];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Búsqueda de Job en vivo + backups históricos
-// ─────────────────────────────────────────────────────────────────────────────
+// =============================================================================
+// BÚSQUEDA DE JOB EN VIVO + BACKUPS HISTÓRICOS
+// =============================================================================
 
 function filterRecordsByJob(array $records, string $jobQuery): array {
     $q = trim($jobQuery);
@@ -1006,6 +1065,10 @@ function searchJobHistory(string $jobQuery): array {
         'sources_count'   => count($sources),
     ];
 }
+
+// =============================================================================
+// FUNCIONES DE LIMPIEZA Y LOGGING
+// =============================================================================
 
 function cleanupOldBackups(): array {
     $dir = BACKUP_FOLDER;
