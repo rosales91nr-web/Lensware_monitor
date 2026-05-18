@@ -3,7 +3,7 @@
 // CORREGIDO: Versión compatible con functions.php actualizado
 
 error_reporting(E_ALL);
-ini_set('display_errors', 0);
+ini_set('display_errors', 1);  para ver errores
 
 // Healthcheck para Railway (IMPORTANTE)
 if ($_SERVER['REQUEST_URI'] === '/health' || $_SERVER['PATH_INFO'] === '/health') {
@@ -16,11 +16,6 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 header('Access-Control-Allow-Headers: Content-Type, X-Upload-Secret');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
 
 function respondJson(array $data, int $statusCode = 200): void {
     if (ob_get_length() !== false) {
