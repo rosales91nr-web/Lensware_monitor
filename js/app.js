@@ -214,16 +214,6 @@ function switchTab(tabId) {
     if (tabId === 'activity') renderActivity();
     if (tabId === 'historico' && histState.backupsByDate.length === 0) loadHistBackupDays();
     if (tabId === 'search' && searchState.query) renderSearchResults();
-
-    // Redibujar gráficas activas después de que el tab sea visible
-    // (el ResizeObserver de Chart.js limpia el canvas al pasar de display:none a block)
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            Object.values(chartInstances).forEach(c => {
-                if (c?.canvas?.isConnected) c.update('none');
-            });
-        });
-    });
 }
 
 function refreshDashboardCharts() {
@@ -327,8 +317,6 @@ function getChartOptions(type, overrides = {}) {
     const opts = {
         responsive: true,
         maintainAspectRatio: false,
-        resizeDelay: 0,
-        animation: { duration: 400 },
         plugins: {
             legend: { display: false },
             datalabels,
@@ -449,11 +437,14 @@ function createAppChart(canvasId, key, { labels, values, colors, optionsOverride
     return chart;
 }
 
+let _suppressChartChange = false;
 function syncChartTypeSelects() {
+    _suppressChartChange = true;
     document.querySelectorAll('.chart-type-select[data-chart-key]').forEach(sel => {
         const k = sel.dataset.chartKey;
         if (chartPrefs[k]) sel.value = chartPrefs[k];
     });
+    _suppressChartChange = false;
 }
 
 const CHART_TYPE_OPTIONS = {
@@ -481,8 +472,7 @@ function enrichHistChartHeaders() {
 }
 
 function onChartTypeChange(e) {
-    // Ignorar cambios programáticos (sel.value = ...) — solo reaccionar a clicks del usuario
-    if (!e.isTrusted) return;
+    if (_suppressChartChange) return;
     const sel = e.target.closest('.chart-type-select');
     if (!sel?.dataset.chartKey) return;
     chartPrefs[sel.dataset.chartKey] = sel.value;
@@ -499,7 +489,6 @@ function renderDeviceHourChart() {
         values: deviceModalHourData,
         colors: '#3b82f6',
         skipIfEmpty: false,
-        optionsOverride: { responsive: false, maintainAspectRatio: false },
     });
 }
 
@@ -1048,9 +1037,9 @@ async function showDeviceDetail(deviceName) {
             window._deviceChartTimer = null;
             if (!modal.classList.contains('active')) return;
             const sel = document.querySelector('#modal-device .chart-type-select[data-chart-key="deviceModal"]');
-            if (sel) sel.value = getChartPref('deviceModal');
+            if (sel) { _suppressChartChange = true; sel.value = getChartPref('deviceModal'); _suppressChartChange = false; }
             renderDeviceHourChart();
-        }, 50);
+        }, 100);
     } catch(e) { console.error(e); }
 }
 
@@ -1618,7 +1607,7 @@ function renderHistContent(data) {
         renderHistCharts(stats);
         syncChartTypeSelects();
         renderHistBreakagesTable();
-    }, 0);
+    }, 100);
 }
 
 function renderHistBreakagesTable() {
@@ -1652,15 +1641,11 @@ function renderHistBreakagesTable() {
  */
 function renderHistCharts(stats) {
     lastHistStats = stats;
-
-    const noResponsive = { responsive: false, maintainAspectRatio: false };
-
     const statusEntries = Object.entries(stats.por_status || {}).sort((a, b) => b[1] - a[1]);
     createAppChart('hist-chart-status', 'status', {
         labels: statusEntries.map(([k]) => STATUS_LABELS[k] || k),
         values: statusEntries.map(([, v]) => v),
         colors: statusEntries.map(([k]) => STATUS_COLORS[k] || '#64748B'),
-        optionsOverride: noResponsive,
     });
 
     const hourData = stats.por_hora || Array(24).fill(0);
@@ -1669,7 +1654,6 @@ function renderHistCharts(stats) {
         values: hourData,
         colors: '#3b82f6',
         skipIfEmpty: false,
-        optionsOverride: noResponsive,
     });
 
     const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
@@ -1682,7 +1666,6 @@ function renderHistCharts(stats) {
             labels: causeEntries.map(([k]) => k),
             values: causeEntries.map(([, v]) => v),
             colors: causeEntries.map((_, i) => causePalette[i % causePalette.length]),
-            optionsOverride: noResponsive,
         });
     } else {
         destroyAppChart(chartInstanceKey('hist-chart-causes', 'causes'));
@@ -1701,7 +1684,6 @@ function renderHistCharts(stats) {
             labels: devEntries.map(([k]) => k),
             values: devEntries.map(([, v]) => v),
             colors: '#8b5cf6',
-            optionsOverride: noResponsive,
         });
     } else {
         destroyAppChart(chartInstanceKey('hist-chart-devices', 'devices'));
