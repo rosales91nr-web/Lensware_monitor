@@ -13,7 +13,26 @@ let appData = {
 };
 
 let currentPage = 1;
+let breaPage = 1;
+let histBreaPage = 1;
 const PAGE_SIZE = 50;
+const TABLE_PAGE_SIZE = 40;
+
+const CHART_PREFS_KEY = 'lensware_chart_prefs';
+const DEFAULT_CHART_PREFS = {
+    status: 'bar',
+    causes: 'doughnut',
+    hour: 'line',
+    devices: 'bar-h',
+    topJobs: 'bar-h',
+    deviceModal: 'bar',
+};
+let chartPrefs = loadChartPrefs();
+const chartInstances = {};
+let lastDashboardStats = null;
+let lastHistStats = null;
+let deviceModalHourData = null;
+let histBreakagesCache = [];
 
 let activeFilters = {
     status: '',
@@ -89,8 +108,11 @@ function setupEventListeners() {
     document.getElementById('act-clear')?.addEventListener('click',   () => clearActivityFilters());
 
     // Filtros de breakages
-    document.getElementById('filter-job')?.addEventListener('input',    () => renderBreakages());
-    document.getElementById('filter-user')?.addEventListener('change',  () => renderBreakages());
+    document.getElementById('filter-job')?.addEventListener('input',    () => { breaPage = 1; renderBreakages(); });
+    document.getElementById('filter-user')?.addEventListener('change',  () => { breaPage = 1; renderBreakages(); });
+    document.getElementById('brea-prev-page')?.addEventListener('click', () => { if (breaPage > 1) { breaPage--; renderBreakages(); } });
+    document.getElementById('brea-next-page')?.addEventListener('click', () => { breaPage++; renderBreakages(); });
+    document.addEventListener('change', onChartTypeChange);
 
     document.getElementById('breakages-tbody')?.addEventListener('click', e => {
         const tr = e.target.closest('tr[data-brea-idx]');
@@ -149,6 +171,11 @@ function setupEventListeners() {
     document.getElementById('btn-hist-load')?.addEventListener('click', () => loadHistData());
     document.getElementById('btn-hist-reset')?.addEventListener('click', () => resetHistFilters());
 
+    document.getElementById('hist-content')?.addEventListener('click', e => {
+        if (e.target.id === 'hist-brea-prev-page' && histBreaPage > 1) { histBreaPage--; renderHistBreakagesTable(); }
+        if (e.target.id === 'hist-brea-next-page') { histBreaPage++; renderHistBreakagesTable(); }
+    });
+
     document.getElementById('btn-hist-close')?.addEventListener('click', () => {
         histState.data = null;
         document.getElementById('hist-banner').classList.add('hidden');
@@ -178,7 +205,10 @@ function switchTab(tabId) {
     };
     document.getElementById('page-title').textContent = titles[tabId] || 'Dashboard';
 
-    if (tabId === 'dashboard') refreshDashboardCharts();
+    if (tabId === 'dashboard') {
+        if (lastDashboardStats) renderCharts(lastDashboardStats);
+        else refreshDashboardCharts();
+    }
     if (tabId === 'devices') renderDevices();
     if (tabId === 'operators') renderOperators();
     if (tabId === 'activity') renderActivity();
@@ -187,7 +217,7 @@ function switchTab(tabId) {
 }
 
 function refreshDashboardCharts() {
-    [window.statusChart, window.causesChart, window.hourChart, window.devicesChart, window.topJobsBreaChart].forEach(c => {
+    Object.values(chartInstances).forEach(c => {
         if (c?.canvas?.isConnected) c.resize();
     });
 }
@@ -253,6 +283,7 @@ function updateUI() {
     document.getElementById('brea-badge').textContent = stats.jobs_con_brea || 0;
 
     renderCharts(stats);
+    syncChartTypeSelects();
     populateFilters();
     renderActivity();
     renderBreakages();
@@ -328,6 +359,144 @@ function getChartOptions(type, overrides = {}) {
     return Object.assign({}, opts, overrides);
 }
 
+function loadChartPrefs() {
+    try {
+        return { ...DEFAULT_CHART_PREFS, ...JSON.parse(localStorage.getItem(CHART_PREFS_KEY) || '{}') };
+    } catch {
+        return { ...DEFAULT_CHART_PREFS };
+    }
+}
+
+function saveChartPrefs() {
+    try { localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(chartPrefs)); } catch (_) {}
+}
+
+function getChartPref(key) {
+    return chartPrefs[key] || DEFAULT_CHART_PREFS[key] || 'bar';
+}
+
+function chartJsType(prefType) {
+    return prefType === 'bar-h' ? 'bar' : prefType;
+}
+
+function chartInstanceKey(canvasId, key) {
+    return (canvasId && canvasId.startsWith('hist-')) ? `hist:${key}` : key;
+}
+
+function destroyAppChart(instanceKey) {
+    const ch = chartInstances[instanceKey];
+    if (ch) {
+        ch.destroy();
+        delete chartInstances[instanceKey];
+    }
+    const legacy = { status: 'statusChart', causes: 'causesChart', hour: 'hourChart', devices: 'devicesChart', topJobs: 'topJobsBreaChart', deviceModal: 'deviceHourChart' };
+    if (legacy[instanceKey] && window[legacy[instanceKey]]) {
+        window[legacy[instanceKey]].destroy();
+        window[legacy[instanceKey]] = null;
+    }
+}
+
+function buildChartDatasets(prefType, labels, values, colors, opts = {}) {
+    const { singleColor = '#3b82f6', barThickness } = opts;
+    if (prefType === 'line') {
+        return [{ data: values, borderColor: singleColor, backgroundColor: 'rgba(59,130,246,0.12)', tension: 0.35, fill: true, borderWidth: 2, pointRadius: 4 }];
+    }
+    if (prefType === 'doughnut') {
+        const bg = Array.isArray(colors) ? colors : labels.map((_, i) => (colors && colors[i]) || singleColor);
+        return [{ data: values, backgroundColor: bg, borderWidth: 2 }];
+    }
+    const bg = Array.isArray(colors) ? colors : singleColor;
+    const ds = { data: values, backgroundColor: bg, borderRadius: 6 };
+    if (barThickness) ds.barThickness = barThickness;
+    return [ds];
+}
+
+function createAppChart(canvasId, key, { labels, values, colors, optionsOverride, datasetOpts, skipIfEmpty = true }) {
+    const prefType = getChartPref(key);
+    const iKey = chartInstanceKey(canvasId, key);
+    destroyAppChart(iKey);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+    const hasData = values?.length && values.some(v => Number(v) > 0);
+    if (skipIfEmpty && !hasData && prefType !== 'line') return null;
+    const chart = new Chart(canvas.getContext('2d'), {
+        type: chartJsType(prefType),
+        data: {
+            labels,
+            datasets: buildChartDatasets(prefType, labels, values, colors, datasetOpts),
+        },
+        options: getChartOptions(prefType, optionsOverride || {}),
+    });
+    chartInstances[iKey] = chart;
+    const legacy = { status: 'statusChart', causes: 'causesChart', hour: 'hourChart', devices: 'devicesChart', topJobs: 'topJobsBreaChart', deviceModal: 'deviceHourChart' };
+    if (legacy[key]) window[legacy[key]] = chart;
+    if (key === 'status' && canvasId.startsWith('hist-')) histState.chartStatus = chart;
+    if (key === 'hour' && canvasId.startsWith('hist-')) histState.chartHour = chart;
+    if (key === 'causes' && canvasId.startsWith('hist-')) histState.chartCauses = chart;
+    if (key === 'devices' && canvasId.startsWith('hist-')) histState.chartDevices = chart;
+    return chart;
+}
+
+function syncChartTypeSelects() {
+    document.querySelectorAll('.chart-type-select[data-chart-key]').forEach(sel => {
+        const k = sel.dataset.chartKey;
+        if (chartPrefs[k]) sel.value = chartPrefs[k];
+    });
+}
+
+const CHART_TYPE_OPTIONS = {
+    status: '<option value="bar">Barras</option><option value="doughnut">Pastel</option><option value="line">Líneas</option>',
+    causes: '<option value="doughnut">Pastel</option><option value="bar">Barras</option><option value="line">Líneas</option>',
+    hour: '<option value="line">Líneas</option><option value="bar">Barras</option><option value="doughnut">Pastel</option>',
+    devices: '<option value="bar-h">Barras H</option><option value="bar">Barras</option><option value="line">Líneas</option>',
+};
+
+function attachChartTypeSelect(canvasId, chartKey) {
+    const canvas = document.getElementById(canvasId);
+    const header = canvas?.closest('.chart-card')?.querySelector('.chart-header');
+    if (!header || header.querySelector('.chart-type-select') || !CHART_TYPE_OPTIONS[chartKey]) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-header-actions';
+    wrap.innerHTML = `<select class="chart-type-select" data-chart-key="${chartKey}">${CHART_TYPE_OPTIONS[chartKey]}</select>`;
+    header.appendChild(wrap);
+}
+
+function enrichHistChartHeaders() {
+    attachChartTypeSelect('hist-chart-status', 'status');
+    attachChartTypeSelect('hist-chart-hour', 'hour');
+    attachChartTypeSelect('hist-chart-causes', 'causes');
+    attachChartTypeSelect('hist-chart-devices', 'devices');
+}
+
+function onChartTypeChange(e) {
+    const sel = e.target.closest('.chart-type-select');
+    if (!sel?.dataset.chartKey) return;
+    chartPrefs[sel.dataset.chartKey] = sel.value;
+    saveChartPrefs();
+    if (lastDashboardStats) renderCharts(lastDashboardStats);
+    if (lastHistStats) renderHistCharts(lastHistStats);
+    if (deviceModalHourData) renderDeviceHourChart();
+}
+
+function renderDeviceHourChart() {
+    if (!deviceModalHourData) return;
+    createAppChart('device-hour-chart', 'deviceModal', {
+        labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+        values: deviceModalHourData,
+        colors: '#3b82f6',
+        skipIfEmpty: false,
+    });
+}
+
+function renderPaginatedTableBody(tbody, rows, page, pageSize, rowHtmlFn) {
+    const total = rows.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (page > totalPages) page = totalPages;
+    const slice = rows.slice((page - 1) * pageSize, page * pageSize);
+    tbody.innerHTML = slice.map((r, i) => rowHtmlFn(r, (page - 1) * pageSize + i)).join('');
+    return { page, totalPages, total };
+}
+
 /** Lentes por fila: R/OD=1, L/OI=1, R/L u OD+OI=2. */
 function lensCountFromSide(side) {
     const n = String(side || '').trim().toUpperCase().replace(/[\s\\]/g, '');
@@ -359,123 +528,87 @@ function getTopJobsBrea(stats) {
 }
 
 function renderCharts(stats) {
-    // Status chart
-    const statusEntries = Object.entries(stats.por_status || {}).sort((a,b)=>b[1]-a[1]);
-    const statusLabels  = statusEntries.map(([k]) => STATUS_LABELS[k] || k);
-    const statusValues  = statusEntries.map(([,v]) => v);
-    const statusColors  = statusEntries.map(([k]) => STATUS_COLORS[k] || '#64748B');
+    lastDashboardStats = stats;
+    const statusEntries = Object.entries(stats.por_status || {}).sort((a, b) => b[1] - a[1]);
+    const statusLabels = statusEntries.map(([k]) => STATUS_LABELS[k] || k);
+    const statusValues = statusEntries.map(([, v]) => v);
+    const statusColors = statusEntries.map(([k]) => STATUS_COLORS[k] || '#64748B');
+    createAppChart('chart-status', 'status', { labels: statusLabels, values: statusValues, colors: statusColors });
+    const statusMeta = document.getElementById('status-meta');
+    if (statusMeta) statusMeta.textContent = `${statusEntries.length} estados`;
 
-    if (window.statusChart) window.statusChart.destroy();
-    const ctxS = document.getElementById('chart-status')?.getContext('2d');
-    if (ctxS) {
-        window.statusChart = new Chart(ctxS, {
-            type: 'bar',
-            data: {
-                labels: statusLabels,
-                datasets: [{ data: statusValues, backgroundColor: statusColors, borderRadius: 6 }]
-            },
-            options: getChartOptions('bar'),
-        });
-    }
-    document.getElementById('status-meta').textContent = `${statusEntries.length} estados`;
-
-    // Causes chart: todas las causas, 1 por orden única (suma = quiebras en tabla)
     const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
     const causeTotal = causeEntries.reduce((s, [, v]) => s + v, 0);
-    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
-    if (window.causesChart) window.causesChart.destroy();
-    const ctxC = document.getElementById('chart-causes')?.getContext('2d');
+    const causePalette = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
     const causesMeta = document.getElementById('causes-meta');
     if (causesMeta) causesMeta.textContent = causeTotal ? `${formatNumber(causeTotal)} órdenes` : 'por orden';
-    if (ctxC && causeEntries.length) {
-        window.causesChart = new Chart(ctxC, {
-            type: 'doughnut',
-            data: {
-                labels: causeEntries.map(([k])=>k),
-                datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor: causeEntries.map((_,i)=>causeColors[i%causeColors.length]), borderWidth: 2 }]
-            },
-            options: getChartOptions('doughnut'),
+    if (causeEntries.length) {
+        createAppChart('chart-causes', 'causes', {
+            labels: causeEntries.map(([k]) => k),
+            values: causeEntries.map(([, v]) => v),
+            colors: causeEntries.map((_, i) => causePalette[i % causePalette.length]),
         });
+    } else {
+        destroyAppChart('causes');
     }
 
-    // Hour chart
     const hourData = stats.por_hora || Array(24).fill(0);
-    if (window.hourChart) window.hourChart.destroy();
-    const ctxH = document.getElementById('chart-hour')?.getContext('2d');
-    if (ctxH) {
-        window.hourChart = new Chart(ctxH, {
-            type: 'line',
-            data: {
-                labels: Array.from({length:24},(_,i)=>`${i}:00`),
-                datasets: [{ data: hourData, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', tension: 0.4, fill: true, borderWidth: 2, pointRadius: 4 }]
-            },
-            options: getChartOptions('line'),
+    createAppChart('chart-hour', 'hour', {
+        labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+        values: hourData,
+        colors: '#3b82f6',
+        skipIfEmpty: false,
+    });
+
+    const devEntries = Object.entries(stats.por_device || {}).slice(0, 10);
+    if (devEntries.length) {
+        createAppChart('chart-devices', 'devices', {
+            labels: devEntries.map(([k]) => k),
+            values: devEntries.map(([, v]) => v),
+            colors: '#8b5cf6',
         });
+    } else {
+        destroyAppChart('devices');
     }
 
-    // Devices chart
-    const devEntries = Object.entries(stats.por_device || {}).slice(0,10);
-    if (window.devicesChart) window.devicesChart.destroy();
-    const ctxD = document.getElementById('chart-devices')?.getContext('2d');
-    if (ctxD && devEntries.length) {
-        window.devicesChart = new Chart(ctxD, {
-            type: 'bar',
-            data: {
-                labels: devEntries.map(([k])=>k),
-                datasets: [{ data: devEntries.map(([,v])=>v), backgroundColor: '#8b5cf6', borderRadius: 6 }]
-            },
-            options: getChartOptions('bar-h'),
-        });
-    }
-
-    // Top jobs con más quiebras
     const topJobs = getTopJobsBrea(stats);
     const canvasTop = document.getElementById('chart-top-jobs-brea');
     const emptyTop = document.getElementById('top-jobs-brea-meta');
     const emptyMsg = document.getElementById('top-jobs-brea-empty');
-    if (window.topJobsBreaChart) window.topJobsBreaChart.destroy();
     if (emptyTop) {
         emptyTop.textContent = topJobs.length
             ? `${topJobs.reduce((s, j) => s + j.count, 0)} quiebras en top ${topJobs.length}`
             : '';
     }
-    if (canvasTop) {
-        canvasTop.style.display = topJobs.length ? 'block' : 'none';
-    }
-    if (emptyMsg) {
-        emptyMsg.classList.toggle('hidden', topJobs.length > 0);
-    }
-    const ctxJ = canvasTop?.getContext('2d');
-    if (ctxJ && topJobs.length) {
+    if (canvasTop) canvasTop.style.display = topJobs.length ? 'block' : 'none';
+    if (emptyMsg) emptyMsg.classList.toggle('hidden', topJobs.length > 0);
+    if (topJobs.length) {
         const labels = [...topJobs].reverse().map(j => j.job);
         const values = [...topJobs].reverse().map(j => j.count);
-        const jobChartOpts = getChartOptions('bar-h');
+        const pref = getChartPref('topJobs');
+        const jobChartOpts = getChartOptions(pref);
         jobChartOpts.onClick = (_evt, elements) => {
             if (!elements.length) return;
             const job = labels[elements[0].index];
             switchTab('search');
             const input = document.getElementById('global-search');
-            if (input) {
-                input.value = job;
-                globalSearch(job);
-            }
+            if (input) { input.value = job; globalSearch(job); }
         };
+        jobChartOpts.plugins = jobChartOpts.plugins || {};
         jobChartOpts.plugins.tooltip = {
-            callbacks: { label: (ctx) => ` ${ctx.parsed.x} quiebra(s)` },
-        };
-        window.topJobsBreaChart = new Chart(ctxJ, {
-            type: 'bar',
-            data: {
-                labels,
-                datasets: [{
-                    data: values,
-                    backgroundColor: '#ef4444',
-                    borderRadius: 6,
-                    barThickness: 22,
-                }],
+            callbacks: {
+                label: (ctx) => ` ${pref === 'bar-h' || pref === 'bar' ? ctx.parsed.x ?? ctx.parsed.y : ctx.parsed} quiebra(s)`,
             },
-            options: jobChartOpts,
+        };
+        createAppChart('chart-top-jobs-brea', 'topJobs', {
+            labels,
+            values,
+            colors: '#ef4444',
+            optionsOverride: jobChartOpts,
+            datasetOpts: { barThickness: 22 },
         });
+    } else {
+        destroyAppChart('topJobs');
     }
 }
 
@@ -631,8 +764,8 @@ function renderBreakages() {
     const tbody = document.getElementById('breakages-tbody');
     if (!tbody) return;
     breakagesListView = data;
-    tbody.innerHTML = data.map((r, i) => `
-        <tr class="breakage" data-brea-idx="${i}" style="cursor:pointer;">
+    const { page, totalPages, total } = renderPaginatedTableBody(tbody, data, breaPage, TABLE_PAGE_SIZE, (r, idx) => `
+        <tr class="breakage" data-brea-idx="${idx}" style="cursor:pointer;">
             <td><strong>${escapeHtml(r.job)}</strong></td>
             <td>${escapeHtml(r.date_raw)}</td>
             <td>${escapeHtml(r.time_raw)}</td>
@@ -641,14 +774,20 @@ function renderBreakages() {
             <td>${escapeHtml(r.user)}</td>
             <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeAttr(r.lens_desc)}">${escapeHtml(r.lens_desc)}</td>
             ${blankDescCellHtml(r)}
-        </tr>`).join('');
-    // data ya son quiebras consolidadas por orden única (R+L = 1 fila)
-    document.getElementById('breakages-count').textContent = formatNumber(data.length);
-    // Si existe un sub-contador de lentes, mostrarlo también
+        </tr>`);
+    breaPage = page;
+    const pageInfo = document.getElementById('brea-page-info');
+    const prevBtn = document.getElementById('brea-prev-page');
+    const nextBtn = document.getElementById('brea-next-page');
+    const pagBar = document.getElementById('brea-pagination');
+    if (pagBar) pagBar.style.display = total > TABLE_PAGE_SIZE ? 'flex' : 'none';
+    if (pageInfo) pageInfo.textContent = `Página ${page} de ${totalPages} (${formatNumber(total)} órdenes)`;
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
+    document.getElementById('breakages-count').textContent = formatNumber(total);
     const lentesBadge = document.getElementById('breakages-lentes-count');
     if (lentesBadge) {
-        const totalLentes = data.reduce((acc, r) => acc + lensCountFromRecord(r), 0);
-        lentesBadge.textContent = formatNumber(totalLentes);
+        lentesBadge.textContent = formatNumber(data.reduce((acc, r) => acc + lensCountFromRecord(r), 0));
     }
 }
 
@@ -764,7 +903,7 @@ function renderSearchResults() {
                 <h3><i class="fas fa-${source.is_live ? 'broadcast-tower' : 'archive'}"></i> ${escapeHtml(source.label)}</h3>
                 <span class="tag ${source.is_live ? 'live' : 'backup'}">${formatNumber(source.records.length)} reg.</span>
             </div>
-            <div class="table-container">
+            <div class="table-container table-scroll">
                 <table class="data-table">
                     ${tableHead}
                     <tbody>${source.records.map(r => searchRecordRowHtml(r)).join('')}</tbody>
@@ -840,10 +979,8 @@ function destroyDeviceHourChart() {
         clearTimeout(window._deviceChartTimer);
         window._deviceChartTimer = null;
     }
-    if (window.deviceHourChart) {
-        window.deviceHourChart.destroy();
-        window.deviceHourChart = null;
-    }
+    deviceModalHourData = null;
+    destroyAppChart('deviceModal');
 }
 
 async function showDeviceDetail(deviceName) {
@@ -852,7 +989,7 @@ async function showDeviceDetail(deviceName) {
         const result = await r.json();
         if (!result.success) return;
         const data = result.details;
-        const hourData = data.hour_distribution || Array(24).fill(0);
+        deviceModalHourData = data.hour_distribution || Array(24).fill(0);
         destroyDeviceHourChart();
         const modal = document.getElementById('modal-device');
         document.getElementById('modal-device-title').textContent = `📟 ${deviceName}`;
@@ -862,12 +999,19 @@ async function showDeviceDetail(deviceName) {
                   .map(([l,v,c])=>`<div style="background:#f8fafc;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:6px;">${l}</div><div style="font-size:32px;font-weight:800;color:${c};">${formatNumber(v)}</div></div>`).join('')}
             </div>
             <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;">
-                <h4 style="font-size:13px;font-weight:700;margin-bottom:12px;">Actividad por hora</h4>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;">
+                    <h4 style="font-size:13px;font-weight:700;margin:0;">Actividad por hora</h4>
+                    <select class="chart-type-select" data-chart-key="deviceModal" style="max-width:100px;">
+                        <option value="bar">Barras</option>
+                        <option value="line">Líneas</option>
+                        <option value="doughnut">Pastel</option>
+                    </select>
+                </div>
                 <div style="position:relative;height:160px;width:100%;overflow:hidden;">
                     <canvas id="device-hour-chart"></canvas>
                 </div>
             </div>
-            <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;overflow:auto;">
+            <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;overflow:auto;max-height:min(280px,40vh);">
                 <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:300px;">
                     <thead><tr style="background:#f8fafc;">
                         <th style="padding:10px 12px;text-align:left;">Job</th>
@@ -888,14 +1032,9 @@ async function showDeviceDetail(deviceName) {
         window._deviceChartTimer = setTimeout(() => {
             window._deviceChartTimer = null;
             if (!modal.classList.contains('active')) return;
-            const canvas = document.getElementById('device-hour-chart');
-            if (!canvas) return;
-            destroyDeviceHourChart();
-            window.deviceHourChart = new Chart(canvas.getContext('2d'), {
-                type: 'bar',
-                data: { labels: Array.from({length:24},(_,i)=>`${i}:00`), datasets: [{ data: hourData, backgroundColor: '#3b82f6', borderRadius: 6 }] },
-                options: getChartOptions('bar'),
-            });
+            const sel = document.querySelector('#modal-device .chart-type-select[data-chart-key="deviceModal"]');
+            if (sel) sel.value = getChartPref('deviceModal');
+            renderDeviceHourChart();
         }, 100);
     } catch(e) { console.error(e); }
 }
@@ -1355,7 +1494,7 @@ function renderHistDailyCompareTable(statsByDay) {
     return `
         <div class="hist-compare-table">
             <h3><i class="fas fa-table" style="color:#3b82f6;"></i> Comparativa por día</h3>
-            <div class="table-container">
+            <div class="table-container table-scroll">
                 <table class="data-table">
                     <thead><tr>
                         <th>Fecha</th><th>Registros</th><th>Jobs</th>
@@ -1422,23 +1561,16 @@ function renderHistContent(data) {
             </div>
             ${breakages.length === 0
                 ? '<div style="background:white;border-radius:14px;padding:40px;text-align:center;color:#94a3b8;border:1px solid #e2e8f0;">Sin quiebras en este período ✅</div>'
-                : `<div class="table-container">
+                : `<div class="table-container table-scroll">
                     <table class="data-table">
                         <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th><th>Blank description</th></tr></thead>
-                        <tbody>
-                        ${breakages.map(r=>`
-                            <tr class="breakage">
-                                <td><strong>${escapeHtml(r.job)}</strong></td>
-                                <td>${escapeHtml(r.date_raw)}</td>
-                                <td>${escapeHtml(r.time_raw)}</td>
-                                <td>${escapeHtml(r.side_label)}</td>
-                                <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr||'-')}</td>
-                                <td>${escapeHtml(r.user)}</td>
-                                <td>${escapeHtml(r.lens_desc)}</td>
-                                ${blankDescCellHtml(r)}
-                            </tr>`).join('')}
-                        </tbody>
+                        <tbody id="hist-brea-tbody"></tbody>
                     </table>
+                  </div>
+                  <div class="table-footer pagination" id="hist-brea-pagination" style="display:none;">
+                    <button type="button" id="hist-brea-prev-page">← Anterior</button>
+                    <span id="hist-brea-page-info">Página 1</span>
+                    <button type="button" id="hist-brea-next-page">Siguiente →</button>
                   </div>`
             }
         </div>
@@ -1448,7 +1580,7 @@ function renderHistContent(data) {
             <div class="breakages-header" style="margin-bottom:14px;">
                 <h2 style="font-size:16px;"><i class="fas fa-microchip" style="color:#8b5cf6;"></i> Resumen por Dispositivo</h2>
             </div>
-            <div class="table-container">
+            <div class="table-container table-scroll">
                 <table class="data-table">
                     <thead><tr><th>Dispositivo</th><th>Total Reg.</th><th>Jobs</th></tr></thead>
                     <tbody>
@@ -1464,77 +1596,95 @@ function renderHistContent(data) {
         </div>
     `;
 
-    // Dibujar gráficas históricas
-    setTimeout(() => renderHistCharts(stats), 100);
+    histBreakagesCache = breakages;
+    histBreaPage = 1;
+    setTimeout(() => {
+        enrichHistChartHeaders();
+        renderHistCharts(stats);
+        syncChartTypeSelects();
+        renderHistBreakagesTable();
+    }, 100);
+}
+
+function renderHistBreakagesTable() {
+    const tbody = document.getElementById('hist-brea-tbody');
+    if (!tbody) return;
+    const data = histBreakagesCache || [];
+    const { page, totalPages, total } = renderPaginatedTableBody(tbody, data, histBreaPage, TABLE_PAGE_SIZE, (r) => `
+        <tr class="breakage">
+            <td><strong>${escapeHtml(r.job)}</strong></td>
+            <td>${escapeHtml(r.date_raw)}</td>
+            <td>${escapeHtml(r.time_raw)}</td>
+            <td>${escapeHtml(r.side_label)}</td>
+            <td style="color:#ef4444;font-weight:600;">${escapeHtml(r.reason_descr || '-')}</td>
+            <td>${escapeHtml(r.user)}</td>
+            <td>${escapeHtml(r.lens_desc)}</td>
+            ${blankDescCellHtml(r)}
+        </tr>`);
+    histBreaPage = page;
+    const pagBar = document.getElementById('hist-brea-pagination');
+    const pageInfo = document.getElementById('hist-brea-page-info');
+    const prevBtn = document.getElementById('hist-brea-prev-page');
+    const nextBtn = document.getElementById('hist-brea-next-page');
+    if (pagBar) pagBar.style.display = total > TABLE_PAGE_SIZE ? 'flex' : 'none';
+    if (pageInfo) pageInfo.textContent = `Página ${page} de ${totalPages} (${formatNumber(total)} órdenes)`;
+    if (prevBtn) prevBtn.disabled = page <= 1;
+    if (nextBtn) nextBtn.disabled = page >= totalPages;
 }
 
 /**
  * Destruye las gráficas históricas anteriores y dibuja nuevas.
  */
 function renderHistCharts(stats) {
-    // Status
-    const statusEntries = Object.entries(stats.por_status || {}).sort((a,b)=>b[1]-a[1]);
-    if (histState.chartStatus) histState.chartStatus.destroy();
-    const ctxS = document.getElementById('hist-chart-status')?.getContext('2d');
-    if (ctxS) {
-        histState.chartStatus = new Chart(ctxS, {
-            type: 'bar',
-            data: {
-                labels: statusEntries.map(([k])=>STATUS_LABELS[k]||k),
-                datasets: [{ data: statusEntries.map(([,v])=>v), backgroundColor: statusEntries.map(([k])=>STATUS_COLORS[k]||'#64748B'), borderRadius: 6 }]
-            },
-            options: getChartOptions('bar'),
-        });
-    }
+    lastHistStats = stats;
+    const statusEntries = Object.entries(stats.por_status || {}).sort((a, b) => b[1] - a[1]);
+    createAppChart('hist-chart-status', 'status', {
+        labels: statusEntries.map(([k]) => STATUS_LABELS[k] || k),
+        values: statusEntries.map(([, v]) => v),
+        colors: statusEntries.map(([k]) => STATUS_COLORS[k] || '#64748B'),
+    });
 
-    // Hour
     const hourData = stats.por_hora || Array(24).fill(0);
-    if (histState.chartHour) histState.chartHour.destroy();
-    const ctxH = document.getElementById('hist-chart-hour')?.getContext('2d');
-    if (ctxH) {
-        histState.chartHour = new Chart(ctxH, {
-            type: 'line',
-            data: {
-                labels: Array.from({length:24},(_,i)=>`${i}:00`),
-                datasets: [{ data: hourData, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.1)', tension:0.4, fill:true, borderWidth:2, pointRadius:4 }]
-            },
-            options: getChartOptions('line'),
-        });
-    }
+    createAppChart('hist-chart-hour', 'hour', {
+        labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+        values: hourData,
+        colors: '#3b82f6',
+        skipIfEmpty: false,
+    });
 
-    // Causes
     const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
-    const causeColors = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
-    if (histState.chartCauses) histState.chartCauses.destroy();
-    const ctxC = document.getElementById('hist-chart-causes')?.getContext('2d');
-    if (ctxC && causeEntries.length) {
-        histState.chartCauses = new Chart(ctxC, {
-            type: 'doughnut',
-            data: {
-                labels: causeEntries.map(([k])=>k),
-                datasets: [{ data: causeEntries.map(([,v])=>v), backgroundColor: causeEntries.map((_,i)=>causeColors[i%causeColors.length]), borderWidth:2 }]
-            },
-            options: getChartOptions('doughnut'),
+    const causePalette = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
+    const causesCanvas = document.getElementById('hist-chart-causes');
+    const causesParent = causesCanvas?.parentElement;
+    causesParent?.querySelector('.hist-chart-empty')?.remove();
+    if (causeEntries.length) {
+        createAppChart('hist-chart-causes', 'causes', {
+            labels: causeEntries.map(([k]) => k),
+            values: causeEntries.map(([, v]) => v),
+            colors: causeEntries.map((_, i) => causePalette[i % causePalette.length]),
         });
-    } else if (ctxC && !causeEntries.length) {
-        const parent = document.getElementById('hist-chart-causes')?.parentElement;
-        if (parent) parent.innerHTML += '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">Sin quiebras en este período</div>';
+    } else {
+        destroyAppChart(chartInstanceKey('hist-chart-causes', 'causes'));
+        if (causesParent && !causesParent.querySelector('.hist-chart-empty')) {
+            const msg = document.createElement('div');
+            msg.className = 'hist-chart-empty';
+            msg.style.cssText = 'text-align:center;padding:20px;color:#94a3b8;font-size:12px;';
+            msg.textContent = 'Sin quiebras en este período';
+            causesParent.appendChild(msg);
+        }
     }
 
-    // Devices
-    const devEntries = Object.entries(stats.por_device || {}).slice(0,10);
-    if (histState.chartDevices) histState.chartDevices.destroy();
-    const ctxD = document.getElementById('hist-chart-devices')?.getContext('2d');
-    if (ctxD && devEntries.length) {
-        histState.chartDevices = new Chart(ctxD, {
-            type: 'bar',
-            data: {
-                labels: devEntries.map(([k])=>k),
-                datasets: [{ data: devEntries.map(([,v])=>v), backgroundColor:'#8b5cf6', borderRadius:6 }]
-            },
-            options: getChartOptions('bar-h'),
+    const devEntries = Object.entries(stats.por_device || {}).slice(0, 10);
+    if (devEntries.length) {
+        createAppChart('hist-chart-devices', 'devices', {
+            labels: devEntries.map(([k]) => k),
+            values: devEntries.map(([, v]) => v),
+            colors: '#8b5cf6',
         });
+    } else {
+        destroyAppChart(chartInstanceKey('hist-chart-devices', 'devices'));
     }
+    syncChartTypeSelects();
 }
 
 /**

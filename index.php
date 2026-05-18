@@ -476,6 +476,73 @@
         .data-table tr:hover td { background: #f8fafc; }
         .data-table tr.breakage td { background: #fef2f2; }
 
+        .table-container.table-scroll {
+            max-height: min(440px, 55vh);
+            overflow: auto;
+        }
+        .table-container.table-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            box-shadow: 0 1px 0 #e2e8f0;
+        }
+        .table-footer.pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 12px 16px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            border-radius: 0 0 14px 14px;
+            font-size: 13px;
+            color: #64748b;
+        }
+        .table-footer.pagination button {
+            padding: 6px 14px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        .table-footer.pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .table-footer.pagination button:not(:disabled):hover { border-color: #3b82f6; color: #1d4ed8; }
+
+        .chart-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .chart-type-select {
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #475569;
+            cursor: pointer;
+            max-width: 110px;
+        }
+        .charts-prefs-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            padding: 10px 14px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #64748b;
+        }
+        .charts-prefs-bar label { font-weight: 700; color: #475569; }
+
         .badge-status {
             display: inline-block;
             padding: 3px 10px;
@@ -1099,21 +1166,25 @@
             </div>
             <div class="charts-row">
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-chart-bar"></i> Actividad por Etapa</h3><span class="chart-meta" id="status-meta"></span></div>
+                    <div class="chart-header"><h3><i class="fas fa-chart-bar"></i> Actividad por Etapa</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="status" title="Tipo de gráfica"><option value="bar">Barras</option><option value="doughnut">Pastel</option><option value="line">Líneas</option></select><span class="chart-meta" id="status-meta"></span></div></div>
                     <canvas id="chart-status" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3><span class="chart-meta" id="causes-meta">por orden</span></div>
+                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="causes"><option value="doughnut">Pastel</option><option value="bar">Barras</option><option value="line">Líneas</option></select><span class="chart-meta" id="causes-meta">por orden</span></div></div>
                     <canvas id="chart-causes" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
             </div>
+            <div class="charts-prefs-bar">
+                <label><i class="fas fa-chart-area"></i> Gráficas</label>
+                <span>Cada tarjeta permite elegir barras, pastel o líneas. La preferencia se guarda en este navegador.</span>
+            </div>
             <div class="charts-row">
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-clock"></i> Actividad por Hora</h3></div>
+                    <div class="chart-header"><h3><i class="fas fa-clock"></i> Actividad por Hora</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="hour"><option value="line">Líneas</option><option value="bar">Barras</option><option value="doughnut">Pastel</option></select></div></div>
                     <canvas id="chart-hour" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-chart-simple"></i> Top Dispositivos</h3></div>
+                    <div class="chart-header"><h3><i class="fas fa-chart-simple"></i> Top Dispositivos</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="devices"><option value="bar-h">Barras H</option><option value="bar">Barras</option><option value="line">Líneas</option></select></div></div>
                     <canvas id="chart-devices" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
             </div>
@@ -1121,7 +1192,7 @@
                 <div class="chart-card chart-card-wide">
                     <div class="chart-header">
                         <h3><i class="fas fa-trophy" style="color:#ef4444;"></i> Top 10 Jobs con más quiebras</h3>
-                        <span class="chart-meta" id="top-jobs-brea-meta"></span>
+                        <div class="chart-header-actions"><select class="chart-type-select" data-chart-key="topJobs"><option value="bar-h">Barras H</option><option value="bar">Barras</option><option value="line">Líneas</option></select><span class="chart-meta" id="top-jobs-brea-meta"></span></div>
                     </div>
                     <canvas id="chart-top-jobs-brea" height="300" style="width:100%;height:300px;"></canvas>
                     <p id="top-jobs-brea-empty" class="chart-empty hidden">Sin quiebras registradas en este período</p>
@@ -1139,11 +1210,16 @@
                 <input type="text" id="filter-job" placeholder="🔍 Buscar por Job o Causa..." class="filter-input">
                 <select id="filter-user" class="filter-select"><option value="">👤 Todos los usuarios</option></select>
             </div>
-            <div class="table-container">
+            <div class="table-container table-scroll">
                 <table class="data-table" id="breakages-table">
                     <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>OD/OI</th><th>Causa</th><th>Usuario</th><th>Lente</th><th>Blank description</th></tr></thead>
                     <tbody id="breakages-tbody"></tbody>
                 </table>
+            </div>
+            <div class="table-footer pagination" id="brea-pagination">
+                <button type="button" id="brea-prev-page">← Anterior</button>
+                <span id="brea-page-info">Página 1</span>
+                <button type="button" id="brea-next-page">Siguiente →</button>
             </div>
             <div class="table-footer"><span id="breakages-count">0</span> órdenes únicas con quiebra &nbsp;|&nbsp; <span id="breakages-lentes-count">0</span> lentes quebrados</div>
         </div>
@@ -1159,7 +1235,7 @@
                 <input type="text" id="act-search" placeholder="🔍 Buscar..." class="filter-input" style="width:150px">
                 <button id="act-clear" class="btn-secondary">🗑️ Limpiar</button>
             </div>
-            <div class="table-container">
+            <div class="table-container table-scroll">
                 <table class="data-table" id="activity-table">
                     <thead><tr><th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th><th>Usuario</th><th>Dispositivo</th><th>Lente</th><th>Blank description</th></tr></thead>
                     <tbody id="activity-tbody"></tbody>
@@ -1174,7 +1250,7 @@
 
         <!-- =================== DEVICES TAB =================== -->
         <div id="tab-devices" class="tab-content">
-            <div class="table-container">
+            <div class="table-container table-scroll">
                 <table class="data-table" id="devices-table">
                     <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th></tr></thead>
                     <tbody id="devices-tbody"></tbody>
@@ -1184,7 +1260,7 @@
 
         <!-- =================== OPERATORS TAB =================== -->
         <div id="tab-operators" class="tab-content">
-            <div class="table-container">
+            <div class="table-container table-scroll">
                 <table class="data-table" id="operators-table">
                     <thead><tr><th>Operador</th><th>Registros</th><th>Jobs</th><th>Dispositivos</th></tr></thead>
                     <tbody id="operators-tbody"></tbody>
