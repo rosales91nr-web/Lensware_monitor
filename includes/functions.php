@@ -40,6 +40,18 @@ function normalizeCsvEncoding(string $raw): string {
     return mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');
 }
 
+/** Lentes por fila según columna R/L: R=1, L=1, R/L=2. */
+function lensCountFromSide(string $side): int {
+    $n = strtoupper(str_replace([' ', '\\'], '', trim($side)));
+    if ($n === 'R/L' || $n === 'RL') {
+        return 2;
+    }
+    if (str_contains($n, '+') && str_contains($n, 'R') && str_contains($n, 'L')) {
+        return 2;
+    }
+    return 1;
+}
+
 function findLatestCSV(): ?string {
     $folder = WATCH_FOLDER;
     if (!is_dir($folder)) return null;
@@ -199,8 +211,13 @@ function processCSV(string $filepath): ?array {
             'time_raw'     => sanitizeCsvField($row['Time'] ?? ''),
             'user'         => sanitizeCsvField($row['User'] ?? ''),
             'device'       => sanitizeCsvField($row['Device'] ?? ''),
-            'side'         => sanitizeCsvField($row['R/L'] ?? ''),
-            'side_label'   => match(sanitizeCsvField($row['R/L'] ?? '')) { 'R' => 'OD', 'L' => 'OI', default => sanitizeCsvField($row['R/L'] ?? '') },
+            'side'         => ($sideRaw = sanitizeCsvField($row['R/L'] ?? '')),
+            'side_label'   => match(strtoupper(str_replace([' ', '\\'], '', $sideRaw))) {
+                'R'   => 'OD',
+                'L'   => 'OI',
+                'R/L', 'RL' => 'OD+OI',
+                default => $sideRaw,
+            },
             'lens_desc'    => sanitizeCsvField($row['Lens description'] ?? ''),
             'blank_desc'   => sanitizeCsvField($row['Blank description'] ?? ''),
             'reason'       => sanitizeCsvField($row['Reason'] ?? ''),
@@ -325,21 +342,23 @@ function calculateStats(array $records): array {
         $jobsSet[$r['job']] = true;
 
         if ($r['is_breakage']) {
-            $totalLentesBrea++; // cada fila BREA = 1 lente quebrado
+            $lensWeight = lensCountFromSide($r['side']);
+            $totalLentesBrea += $lensWeight;
             $jobsBrea[$r['job']] = true;
             $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');
 
-            // Causa por orden única: si el mismo job ya tiene esta causa, no duplicar
+            // Gráfica de causas: sumar lentes (R=1, L=1, R/L=2)
+            $byCause[$cause] = ($byCause[$cause] ?? 0) + $lensWeight;
+
+            // Top jobs: por órdenes únicas (job + causa)
             $causeKey = $r['job'] . '|' . $cause;
             if (!isset($breaJobCausaSeen[$causeKey])) {
                 $breaJobCausaSeen[$causeKey] = true;
-                $byCause[$cause] = ($byCause[$cause] ?? 0) + 1;
-                // Top jobs brea: contar por órdenes únicas (no por lentes)
                 $breaPerJob[$r['job']] = ($breaPerJob[$r['job']] ?? 0) + 1;
             }
 
-            if ($dev !== '') $breaDev[$dev] = ($breaDev[$dev] ?? 0) + 1;
-            $breaUser[$usr]  = ($breaUser[$usr]  ?? 0) + 1;
+            if ($dev !== '') $breaDev[$dev] = ($breaDev[$dev] ?? 0) + $lensWeight;
+            $breaUser[$usr]  = ($breaUser[$usr]  ?? 0) + $lensWeight;
         }
     }
 
@@ -368,7 +387,7 @@ function calculateStats(array $records): array {
         'por_hora'           => $byHour,
         'por_device'         => $byDevice,
         'por_user'           => $byUser,
-        'brea_causa'         => $byCause,           // causas por órdenes únicas
+        'brea_causa'         => $byCause,           // causas por lentes (R/L)
         'brea_device'        => $breaDev,
         'brea_por_user'      => $breaUser,
         'top_jobs_brea'      => $topJobsBrea,
@@ -398,7 +417,7 @@ function getBreakages(array $records): array {
             $sides = array_unique(array_map(fn($r) => $r['side'], $rows));
             sort($sides);
             if (in_array('R', $sides) && in_array('L', $sides)) {
-                $base['side']       = 'RL';
+                $base['side']       = 'R/L';
                 $base['side_label'] = 'OD+OI';
             } else {
                 $base['side']       = implode('+', $sides);

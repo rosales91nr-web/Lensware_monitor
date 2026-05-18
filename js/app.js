@@ -305,6 +305,14 @@ function getChartOptions(type, overrides = {}) {
     return Object.assign({}, opts, overrides);
 }
 
+/** Lentes por fila: R=1, L=1, R/L o RL=2 (columna R/L del CSV). */
+function lensCountFromSide(side) {
+    const n = String(side || '').trim().toUpperCase().replace(/[\s\\]/g, '');
+    if (n === 'R/L' || n === 'RL') return 2;
+    if (n.includes('+') && n.includes('R') && n.includes('L')) return 2;
+    return 1;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Gráficas principales (en vivo)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -604,8 +612,7 @@ function renderBreakages() {
     // Si existe un sub-contador de lentes, mostrarlo también
     const lentesBadge = document.getElementById('breakages-lentes-count');
     if (lentesBadge) {
-        // Contar lentes reales: OD+OI = 2, OD u OI = 1
-        const totalLentes = data.reduce((acc, r) => acc + (r.side === 'RL' ? 2 : 1), 0);
+        const totalLentes = data.reduce((acc, r) => acc + lensCountFromSide(r.side), 0);
         lentesBadge.textContent = formatNumber(totalLentes);
     }
 }
