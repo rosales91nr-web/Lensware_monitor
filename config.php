@@ -53,16 +53,6 @@ $STATUS_COLORS = [
     'WHST' => '#94A3B8'
 ];
 
-// Logger
-function logMessage(string $msg, string $level = 'info'): void {
-    $logFile = __DIR__ . '/logs/monitor.log';
-    if (!is_dir(dirname($logFile))) {
-        mkdir(dirname($logFile), 0777, true);
-    }
-    $timestamp = date('Y-m-d H:i:s');
-    file_put_contents($logFile, "[$timestamp] [$level] $msg" . PHP_EOL, FILE_APPEND | LOCK_EX);
-}
-
 // Crear carpetas requeridas si no existen
 foreach ([BACKUP_FOLDER, __DIR__ . '/cache', __DIR__ . '/uploads', __DIR__ . '/logs'] as $dir) {
     if (!is_dir($dir)) {
