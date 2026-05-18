@@ -355,7 +355,8 @@ function calculateStats(array $records): array {
         $jobsSet[$r['job']] = true;
 
         if ($r['is_breakage']) {
-            $lensWeight = lensCountFromRecord($r);
+            // 🔥 CORRECCIÓN AQUÍ: Contamos 1 por cada fila de quiebra, no todos los lentes de la orden
+            $lensWeight = 1; // <--- ESTA ES LA LÍNEA CORREGIDA
             $totalLentesBrea += $lensWeight;
             $jobsBrea[$r['job']] = true;
             $cause = $r['reason_descr'] ?: ($r['reason'] ?: 'Sin causa');

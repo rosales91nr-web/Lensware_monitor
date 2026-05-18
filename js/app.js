@@ -1722,8 +1722,52 @@ function renderHistEmpty() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+// 🔥 FUNCIÓN EXPORTAR MEJORADA 🔥
 async function exportData(type) {
-    window.location.href = `api.php?action=export&type=${type}`;
+    const exportBtn = document.getElementById('btn-export');
+    const breakagesBtn = document.getElementById('export-breakages-btn');
+    let targetBtn = null;
+    let originalText = '';
+
+    // Determinar qué botón está siendo usado
+    if (type === 'breakages' && breakagesBtn) {
+        targetBtn = breakagesBtn;
+    } else if (type === 'activity' && exportBtn) {
+        targetBtn = exportBtn;
+    }
+
+    if (targetBtn) {
+        originalText = targetBtn.innerHTML;
+        targetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exportando...';
+        targetBtn.disabled = true;
+    }
+
+    try {
+        const response = await fetch(`api.php?action=export&type=${type}`);
+        if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+        a.download = `lensware_export_${type}_${timestamp}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        // Opcional: pequeño feedback de éxito (sin alert molesto)
+        console.log(`Exportación de ${type} completada`);
+    } catch (error) {
+        console.error('Error en la exportación:', error);
+        alert(`Error al exportar los datos (${type}). Por favor, inténtalo de nuevo.`);
+    } finally {
+        if (targetBtn) {
+            targetBtn.innerHTML = originalText;
+            targetBtn.disabled = false;
+        }
+    }
 }
 
 function startAutoRefresh() {
