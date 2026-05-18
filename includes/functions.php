@@ -336,24 +336,14 @@ function recordHour(string $timeRaw): int {
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * 🔧 CORREGIDA Y OPTIMIZADA: Calcula estadísticas contando INCIDENTES por momento específico
- * 
- * DIFERENCIAS CLAVE:
- * - Mismo job + misma fecha + misma hora:minuto = 1 incidente (consolida OD+OI)
- * - Mismo job + misma fecha + hora diferente = incidentes separados
- * - Mismo job + mismo lado + hora diferente = incidentes separados
- * 
- * RETORNA:
- * - jobs_con_brea: número de INCIDENTES (eventos de quiebra en el tiempo)
- * - jobs_unicos_afectados: número de JOBS distintos que tuvieron al menos una quiebra
- * - total_lentes_brea: suma total de lentes quebrados (OD=1, OI=1, OD+OI=2)
+ * 🔧 CORREGIDA: Calcula estadísticas contando ÓRDENES ÚNICAS para quiebras
+ * Una orden con quiebra en OD+OI = 1 orden, NO 2 eventos
  */
 function calculateStatsCorrected(array $records): array {
     if (empty($records)) {
         return [
             'total' => 0,
             'jobs_unicos' => 0,
-            'jobs_unicos_afectados' => 0,
             'jobs_con_brea' => 0,
             'total_lentes_brea' => 0,
             'brea_tasa' => 0,
@@ -374,14 +364,11 @@ function calculateStatsCorrected(array $records): array {
     $usuarios = [];
     $dispositivos = [];
     
-    // Tracking por JOB (orden única) - para jobs únicos afectados
+    // Tracking por JOB (orden única)
     $jobsUnicos = [];
-    $jobsUnicosAfectados = [];  // jobs que tienen al menos una quiebra
-    
-    // Tracking por INCIDENTE (job + fecha + hora:minuto)
-    $incidentes = [];            // key => detalles del incidente
-    $lentesPorIncidente = [];    // lentes por incidente
-    $causasPorIncidente = [];    // causas por incidente
+    $jobsConBrea = [];           // jobs que tienen al menos una quiebra
+    $lentesPorJob = [];          // total lentes quebrados por job (1 o 2 por registro)
+    $causasPorJob = [];          // causas únicas por job
     
     foreach ($records as $r) {
         $status = $r['status'] ?? 'UNKNOWN';
@@ -402,52 +389,37 @@ function calculateStatsCorrected(array $records): array {
         $job = $r['job'];
         $jobsUnicos[$job] = true;
 
-        // 🔧 QUIEBRA: contar por INCIDENTE (job + fecha + hora:minuto)
+        // 🔧 QUIEBRA: contar por JOB (orden única)
         if ($r['is_breakage']) {
-            // Marcar este job como afectado
-            $jobsUnicosAfectados[$job] = true;
+            $jobsConBrea[$job] = true;
             
-            // Clave de incidente: job + fecha + hora:minuto (ignorar segundos)
-            $timeKey = substr($r['time_raw'] ?? '00:00:00', 0, 5); // "HH:MM"
-            $incidentKey = $job . '|' . ($r['date_raw'] ?? '') . '|' . $timeKey;
-            
-            // Contar lentes para este incidente
+            // Contar lentes por este evento (1 o 2 según side)
             $lensesThisEvent = lensCountFromSide($r['side_label'] ?? $r['side'] ?? '');
-            $lentesPorIncidente[$incidentKey] = ($lentesPorIncidente[$incidentKey] ?? 0) + $lensesThisEvent;
+            $lentesPorJob[$job] = ($lentesPorJob[$job] ?? 0) + $lensesThisEvent;
             
-            // Guardar detalles del incidente para la causa
+            // Causa única por job
             $causa = $r['reason_descr'] ?? ($r['reason'] ?? 'Sin especificar');
-            if (!isset($causasPorIncidente[$incidentKey])) {
-                $causasPorIncidente[$incidentKey] = [];
-                // Guardar el registro base para referencia
-                $incidentes[$incidentKey] = $r;
+            if (!isset($causasPorJob[$job])) {
+                $causasPorJob[$job] = [];
             }
-            $causasPorIncidente[$incidentKey][$causa] = true;
+            $causasPorJob[$job][$causa] = true;
         }
     }
 
-    // Total lentes quebrados = suma de lentes por incidente
-    $totalLentesBrea = array_sum($lentesPorIncidente);
+    // Total lentes quebrados = suma de lentes por job
+    $totalLentesBrea = array_sum($lentesPorJob);
     
-    // Total incidentes = cantidad de claves únicas
-    $totalIncidentes = count($incidentes);
-    
-    // Top jobs con más incidentes (por cantidad de incidentes, no por lentes)
+    // Top jobs con más quiebras (por cantidad de eventos de quiebra, pero mostramos job)
     $topJobsBrea = [];
-    $incidentesPorJob = [];
-    foreach ($incidentes as $key => $incidente) {
-        $job = $incidente['job'];
-        $incidentesPorJob[$job] = ($incidentesPorJob[$job] ?? 0) + 1;
-    }
-    foreach ($incidentesPorJob as $job => $count) {
+    foreach ($lentesPorJob as $job => $count) {
         $topJobsBrea[] = ['job' => $job, 'count' => $count];
     }
     usort($topJobsBrea, fn($a, $b) => $b['count'] - $a['count']);
     $topJobsBrea = array_slice($topJobsBrea, 0, 10);
     
-    // Causas: contar cada incidente UNA VEZ por causa
+    // Causas: contar cada job UNA VEZ por causa
     $breaCausa = [];
-    foreach ($causasPorIncidente as $causas) {
+    foreach ($causasPorJob as $causas) {
         foreach ($causas as $causa => $dummy) {
             $breaCausa[$causa] = ($breaCausa[$causa] ?? 0) + 1;
         }
@@ -455,42 +427,35 @@ function calculateStatsCorrected(array $records): array {
     arsort($breaCausa);
     
     $totalJobs = count($jobsUnicos);
-    $totalJobsAfectados = count($jobsUnicosAfectados);
-    $breaTasa = $totalJobs > 0 ? ($totalJobsAfectados / $totalJobs) * 100 : 0;
+    $totalJobsBrea = count($jobsConBrea);
+    $breaTasa = $totalJobs > 0 ? ($totalJobsBrea / $totalJobs) * 100 : 0;
 
     return [
-        'total'                   => $total,
-        'jobs_unicos'             => $totalJobs,
-        'jobs_unicos_afectados'   => $totalJobsAfectados,  // JOBS distintos con quiebra
-        'jobs_con_brea'           => $totalIncidentes,      // INCIDENTES (eventos en el tiempo)
-        'total_lentes_brea'       => $totalLentesBrea,      // Lentes físicos quebrados
-        'brea_tasa'               => round($breaTasa, 2),
-        'usuarios'                => count($usuarios),
-        'dispositivos'            => count($dispositivos),
-        'por_status'              => $porStatus,
-        'por_hora'                => $porHora,
-        'por_device'              => $porDevice,
-        'brea_causa'              => $breaCausa,
-        'top_jobs_brea'           => $topJobsBrea,
+        'total'              => $total,
+        'jobs_unicos'        => $totalJobs,
+        'jobs_con_brea'      => $totalJobsBrea,
+        'total_lentes_brea'  => $totalLentesBrea,
+        'brea_tasa'          => round($breaTasa, 2),
+        'usuarios'           => count($usuarios),
+        'dispositivos'       => count($dispositivos),
+        'por_status'         => $porStatus,
+        'por_hora'           => $porHora,
+        'por_device'         => $porDevice,
+        'brea_causa'         => $breaCausa,
+        'top_jobs_brea'      => $topJobsBrea,
     ];
 }
 
 /**
- * 🔧 CORREGIDA: Obtiene quiebras como INCIDENTES (no consolida diferentes momentos)
- * 
- * - Mismo job + misma fecha + misma hora:minuto = 1 fila (consolida OD+OI)
- * - Mismo job + misma fecha + hora diferente = filas separadas
+ * 🔧 CORREGIDA: Obtiene quiebras consolidando OD+OI en una sola fila
+ * Retorna una lista de quiebras donde cada orden aparece UNA VEZ
  */
 function getBreakagesConsolidated(array $records): array {
-    // Agrupar por job + fecha + hora:minuto (ignorar segundos)
+    // Agrupar quiebras por job + fecha + hora (mismo momento)
     $grouped = [];
     foreach ($records as $r) {
         if (!$r['is_breakage']) continue;
-        
-        // Usar hora:minuto para agrupar (mismo momento exacto)
-        $timeKey = substr($r['time_raw'] ?? '00:00:00', 0, 5); // "HH:MM"
-        $key = $r['job'] . '|' . ($r['date_raw'] ?? '') . '|' . $timeKey;
-        
+        $key = $r['job'] . '|' . ($r['date_raw'] ?? '') . '|' . ($r['time_raw'] ?? '');
         if (!isset($grouped[$key])) {
             $grouped[$key] = [];
         }
@@ -502,12 +467,12 @@ function getBreakagesConsolidated(array $records): array {
         if (count($rows) === 1) {
             $breakages[] = $rows[0];
         } else {
-            // Mismo momento: consolidar OD + OI en una sola fila
+            // Consolidar OD + OI en una sola fila
             $breakages[] = mergeBreakageRecords($rows);
         }
     }
     
-    // Ordenar por fecha+hora descendente (más reciente primero)
+    // Ordenar por fecha descendente (más reciente primero)
     usort($breakages, function($a, $b) {
         $da = ($a['date_raw'] ?? '') . ' ' . ($a['time_raw'] ?? '');
         $db = ($b['date_raw'] ?? '') . ' ' . ($b['time_raw'] ?? '');
@@ -518,7 +483,7 @@ function getBreakagesConsolidated(array $records): array {
 }
 
 /**
- * 🔧 CORREGIDA: Consolida múltiples registros de quiebra del MISMO MOMENTO (OD + OI)
+ * 🔧 CORREGIDA: Consolida múltiples registros de quiebra de la misma orden (OD + OI)
  */
 function mergeBreakageRecords(array $records): array {
     if (empty($records)) return [];
@@ -528,9 +493,11 @@ function mergeBreakageRecords(array $records): array {
     $hasR = false;
     $hasL = false;
     $reasons = [];
+    $allSides = [];
     
     foreach ($records as $r) {
         $side = $r['side_label'] ?? $r['side'] ?? '';
+        $allSides[] = $side;
         
         if (in_array($side, ['OD', 'R'])) $hasR = true;
         if (in_array($side, ['OI', 'L'])) $hasL = true;
@@ -551,7 +518,7 @@ function mergeBreakageRecords(array $records): array {
         $base['side'] = 'L';
     }
     
-    // Consolidar razón (si hay múltiples causas en el mismo momento)
+    // Consolidar razón
     if (count($reasons) > 1) {
         $base['reason_descr'] = implode(' + ', array_keys($reasons));
     } else {
