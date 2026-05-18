@@ -437,14 +437,16 @@ function createAppChart(canvasId, key, { labels, values, colors, optionsOverride
     return chart;
 }
 
-let _suppressChartChange = false;
+// _syncingCharts: flag para que syncChartTypeSelects no dispare onChartTypeChange
+let _syncingCharts = false;
+
 function syncChartTypeSelects() {
-    _suppressChartChange = true;
+    _syncingCharts = true;
     document.querySelectorAll('.chart-type-select[data-chart-key]').forEach(sel => {
         const k = sel.dataset.chartKey;
         if (chartPrefs[k]) sel.value = chartPrefs[k];
     });
-    _suppressChartChange = false;
+    _syncingCharts = false;
 }
 
 const CHART_TYPE_OPTIONS = {
@@ -472,7 +474,7 @@ function enrichHistChartHeaders() {
 }
 
 function onChartTypeChange(e) {
-    if (_suppressChartChange) return;
+    if (_syncingCharts) return;  // ignorar cambios programáticos de syncChartTypeSelects
     const sel = e.target.closest('.chart-type-select');
     if (!sel?.dataset.chartKey) return;
     chartPrefs[sel.dataset.chartKey] = sel.value;
@@ -1036,8 +1038,10 @@ async function showDeviceDetail(deviceName) {
         window._deviceChartTimer = setTimeout(() => {
             window._deviceChartTimer = null;
             if (!modal.classList.contains('active')) return;
+            _syncingCharts = true;
             const sel = document.querySelector('#modal-device .chart-type-select[data-chart-key="deviceModal"]');
-            if (sel) { _suppressChartChange = true; sel.value = getChartPref('deviceModal'); _suppressChartChange = false; }
+            if (sel) sel.value = getChartPref('deviceModal');
+            _syncingCharts = false;
             renderDeviceHourChart();
         }, 100);
     } catch(e) { console.error(e); }
@@ -1269,10 +1273,6 @@ function getHistHourFilters() {
     return { hourFrom, hourTo };
 }
 
-/**
- * Carga los días disponibles (agrupados por fecha) desde el endpoint backups_by_date
- * y renderiza el selector de días (chips) y el select de backups.
- */
 async function loadHistBackupDays() {
     const picker = document.getElementById('hist-day-picker');
     if (!picker) return;
@@ -1286,7 +1286,6 @@ async function loadHistBackupDays() {
         }
         histState.backupsByDate = result.data;
         renderHistDayChips();
-        // Pre-seleccionar hoy (último backup) o el día más reciente disponible
         const todayEntry = histState.backupsByDate.find(d => d.is_today)
             || histState.backupsByDate[0];
         if (todayEntry) selectHistDay(todayEntry.date);
@@ -1296,10 +1295,6 @@ async function loadHistBackupDays() {
     }
 }
 
-/**
- * Dibuja los chips de días disponibles.
- * Hoy aparece primero y en azul. Días anteriores muestran DD/MM.
- */
 function renderHistDayChips() {
     const picker = document.getElementById('hist-day-picker');
     if (!picker) return;
@@ -1317,14 +1312,10 @@ function renderHistDayChips() {
     }).join('');
 }
 
-/**
- * Al hacer clic en un chip de día: muestra los backups disponibles de ese día
- * en el select (solo para hoy se muestran todos; para días pasados solo el diario o el más reciente).
- */
 function selectHistDay(date) {
     histState.selectedDate = date;
     histState.selectedFile = null;
-    renderHistDayChips(); // re-render para marcar el seleccionado
+    renderHistDayChips();
 
     const dayObj = histState.backupsByDate.find(d => d.date === date);
     const select = document.getElementById('hist-backup-select');
@@ -1333,7 +1324,6 @@ function selectHistDay(date) {
     select.innerHTML = '';
 
     if (dayObj.is_today) {
-        // Hoy: mostrar todos los backups del día para elegir momento exacto
         const opt = document.createElement('option');
         opt.value = '';
         opt.textContent = `— ${dayObj.all.length} backup(s) disponibles —`;
@@ -1345,13 +1335,11 @@ function selectHistDay(date) {
             o.textContent = `${hour} — ${b.filename} (${formatFileSize(b.size)})`;
             select.appendChild(o);
         });
-        // Pre-seleccionar el primero (más reciente)
         if (dayObj.all.length > 0) {
             select.value = dayObj.all[0].filename;
             histState.selectedFile = dayObj.all[0].filename;
         }
     } else {
-        // Día anterior: el backup recomendado ya está en dayObj.backup
         const opt = document.createElement('option');
         opt.value = '';
         opt.textContent = `— Seleccionar backup —`;
@@ -1365,7 +1353,6 @@ function selectHistDay(date) {
             select.appendChild(o);
         });
 
-        // Pre-seleccionar el recomendado (diario o el más reciente)
         const recommended = dayObj.backup;
         if (recommended) {
             select.value = recommended.filename;
@@ -1480,7 +1467,6 @@ async function loadHistRangeData(hourFrom, hourTo) {
     }
 }
 
-
 function renderHistDailyCompareTable(statsByDay) {
     const entries = Object.entries(statsByDay || {}).sort((a, b) => b[0].localeCompare(a[0]));
     if (entries.length < 2) return '';
@@ -1510,9 +1496,6 @@ function renderHistDailyCompareTable(statsByDay) {
         </div>`;
 }
 
-/**
- * Renderiza el contenido histórico: KPIs, gráficas y tabla de quiebras.
- */
 function renderHistContent(data) {
     const stats    = data.stats;
     const breakages= data.breakages || [];
@@ -1636,9 +1619,6 @@ function renderHistBreakagesTable() {
     if (nextBtn) nextBtn.disabled = page >= totalPages;
 }
 
-/**
- * Destruye las gráficas históricas anteriores y dibuja nuevas.
- */
 function renderHistCharts(stats) {
     lastHistStats = stats;
     const statusEntries = Object.entries(stats.por_status || {}).sort((a, b) => b[1] - a[1]);
@@ -1691,9 +1671,6 @@ function renderHistCharts(stats) {
     syncChartTypeSelects();
 }
 
-/**
- * Muestra u oculta la barra de estado del histórico.
- */
 function showHistStatus(type, text) {
     const bar  = document.getElementById('hist-status-bar');
     const icon = document.getElementById('hist-status-icon');
@@ -1710,9 +1687,6 @@ function showHistStatus(type, text) {
     }
 }
 
-/**
- * Limpia el panel histórico y vuelve al estado vacío.
- */
 function resetHistFilters() {
     histState.selectedDate = null;
     histState.selectedFile = null;

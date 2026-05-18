@@ -1375,7 +1375,7 @@ function togglePwd() {
             <a href="#" class="nav-item active" data-tab="dashboard" title="Dashboard"><i class="fas fa-chart-pie"></i><span class="nav-label">Dashboard</span></a>
             <a href="#" class="nav-item" data-tab="breakages" title="Quiebras"><i class="fas fa-bug"></i><span class="nav-label">Quiebras</span><span class="badge" id="brea-badge">0</span></a>
             <a href="#" class="nav-item" data-tab="activity" title="Actividad"><i class="fas fa-history"></i><span class="nav-label">Actividad</span></a>
-            <a href="#" class="nav-item" data-tab="devices" title="Dispositivos"><i class="fas fa-microchip"></i><span class="nav-label">Dispositivos</span></a>
+            <a href="#" class="nav-item" data-tab="devices" title="Dispositivos"><i class="fas fa-microchip"></i><span class="nav-label">Equipos</span></a>
             <a href="#" class="nav-item" data-tab="operators" title="Operadores"><i class="fas fa-users"></i><span class="nav-label">Operadores</span></a>
             <a href="#" class="nav-item" data-tab="search" title="Buscar"><i class="fas fa-search"></i><span class="nav-label">Buscar</span></a>
             <div class="nav-section-label" style="margin-top:8px;">Análisis</div>
