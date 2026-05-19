@@ -293,6 +293,9 @@ function updateUI() {
 
     renderCharts(stats);
     syncChartTypeSelects();
+    if (histState.data?.stats && document.getElementById('tab-historico')?.classList.contains('active')) {
+        scheduleHistChartsRender(histState.data.stats);
+    }
     populateFilters();
     renderActivity();
     renderBreakages();
@@ -394,15 +397,9 @@ function chartInstanceKey(canvasId, key) {
 
 function destroyAppChart(instanceKey) {
     const ch = chartInstances[instanceKey];
-    if (ch) {
-        ch.destroy();
-        delete chartInstances[instanceKey];
-    }
-    const legacy = { status: 'statusChart', causes: 'causesChart', hour: 'hourChart', devices: 'devicesChart', topJobs: 'topJobsBreaChart', deviceModal: 'deviceHourChart' };
-    if (legacy[instanceKey] && window[legacy[instanceKey]]) {
-        window[legacy[instanceKey]].destroy();
-        window[legacy[instanceKey]] = null;
-    }
+    if (!ch) return;
+    try { ch.destroy(); } catch (_) { /* ignore */ }
+    delete chartInstances[instanceKey];
 }
 
 function buildChartDatasets(prefType, labels, values, colors, opts = {}) {
@@ -437,8 +434,6 @@ function createAppChart(canvasId, key, { labels, values, colors, optionsOverride
         options: getChartOptions(prefType, optionsOverride || {}),
     });
     chartInstances[iKey] = chart;
-    const legacy = { status: 'statusChart', causes: 'causesChart', hour: 'hourChart', devices: 'devicesChart', topJobs: 'topJobsBreaChart', deviceModal: 'deviceHourChart' };
-    if (legacy[key]) window[legacy[key]] = chart;
     if (key === 'status' && canvasId.startsWith('hist-')) histState.chartStatus = chart;
     if (key === 'hour' && canvasId.startsWith('hist-')) histState.chartHour = chart;
     if (key === 'causes' && canvasId.startsWith('hist-')) histState.chartCauses = chart;
@@ -467,7 +462,8 @@ const CHART_TYPE_OPTIONS = {
 
 function attachChartTypeSelect(canvasId, chartKey) {
     const canvas = document.getElementById(canvasId);
-    const header = canvas?.closest('.chart-card')?.querySelector('.chart-header');
+    const header = canvas?.closest('.chart-card')?.querySelector('.chart-header')
+        || canvas?.closest('.chart-wrap')?.closest('.chart-card')?.querySelector('.chart-header');
     if (!header || header.querySelector('.chart-type-select') || !CHART_TYPE_OPTIONS[chartKey]) return;
     const wrap = document.createElement('div');
     wrap.className = 'chart-header-actions';
@@ -567,7 +563,7 @@ function renderCharts(stats) {
             colors: causeEntries.map((_, i) => causePalette[i % causePalette.length]),
         });
     } else {
-        destroyAppChart('causes');
+        destroyAppChart(chartInstanceKey('chart-causes', 'causes'));
     }
 
     const hourData = stats.por_hora || Array(24).fill(0);
@@ -586,7 +582,7 @@ function renderCharts(stats) {
             colors: '#8b5cf6',
         });
     } else {
-        destroyAppChart('devices');
+        destroyAppChart(chartInstanceKey('chart-devices', 'devices'));
     }
 
     const topJobs = getTopJobsBrea(stats);
@@ -626,7 +622,7 @@ function renderCharts(stats) {
             datasetOpts: { barThickness: 22 },
         });
     } else {
-        destroyAppChart('topJobs');
+        destroyAppChart(chartInstanceKey('chart-top-jobs-brea', 'topJobs'));
     }
 }
 
@@ -997,13 +993,36 @@ async function globalSearch(q) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Device detail modal
 // ─────────────────────────────────────────────────────────────────────────────
-function destroyDeviceHourChart() {
+function destroyDeviceHourChartOnly() {
     if (window._deviceChartTimer) {
         clearTimeout(window._deviceChartTimer);
         window._deviceChartTimer = null;
     }
-    deviceModalHourData = null;
     destroyAppChart('deviceModal');
+}
+
+function destroyDeviceHourChart() {
+    destroyDeviceHourChartOnly();
+    deviceModalHourData = null;
+}
+
+function scheduleDeviceHourChartRender() {
+    const run = () => {
+        const modal = document.getElementById('modal-device');
+        if (!modal?.classList.contains('active') || !deviceModalHourData) return;
+        const canvas = document.getElementById('device-hour-chart');
+        if (!canvas) return;
+        _syncingCharts = true;
+        const sel = document.querySelector('#modal-device .chart-type-select[data-chart-key="deviceModal"]');
+        if (sel) sel.value = getChartPref('deviceModal');
+        _syncingCharts = false;
+        renderDeviceHourChart();
+        const ch = chartInstances.deviceModal;
+        if (ch) {
+            try { ch.resize(); } catch (_) { /* ignore */ }
+        }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
 }
 
 async function showDeviceDetail(deviceName) {
@@ -1012,8 +1031,8 @@ async function showDeviceDetail(deviceName) {
         const result = await r.json();
         if (!result.success) return;
         const data = result.details;
+        destroyDeviceHourChartOnly();
         deviceModalHourData = data.hour_distribution || Array(24).fill(0);
-        destroyDeviceHourChart();
         const modal = document.getElementById('modal-device');
         document.getElementById('modal-device-title').textContent = `📟 ${deviceName}`;
         document.getElementById('device-details').innerHTML = `
@@ -1056,15 +1075,7 @@ async function showDeviceDetail(deviceName) {
                 </table>
             </div>`;
         modal.classList.add('active');
-        window._deviceChartTimer = setTimeout(() => {
-            window._deviceChartTimer = null;
-            if (!modal.classList.contains('active')) return;
-            _syncingCharts = true;
-            const sel = document.querySelector('#modal-device .chart-type-select[data-chart-key="deviceModal"]');
-            if (sel) sel.value = getChartPref('deviceModal');
-            _syncingCharts = false;
-            renderDeviceHourChart();
-        }, 100);
+        scheduleDeviceHourChartRender();
     } catch(e) { console.error(e); }
 }
 
@@ -1535,12 +1546,18 @@ function resizeHistCharts() {
 }
 
 function scheduleHistChartsRender(stats) {
+    if (window._histChartTimer) {
+        clearTimeout(window._histChartTimer);
+        window._histChartTimer = null;
+    }
     const run = () => {
+        if (!document.getElementById('hist-chart-status')) return;
         enrichHistChartHeaders();
         renderHistCharts(stats);
         syncChartTypeSelects();
         renderHistBreakagesTable();
-        requestAnimationFrame(resizeHistCharts);
+        resizeHistCharts();
+        window._histChartTimer = setTimeout(resizeHistCharts, 150);
     };
     requestAnimationFrame(() => requestAnimationFrame(run));
 }
