@@ -17,6 +17,8 @@ let breaPage = 1;
 let histBreaPage = 1;
 const PAGE_SIZE = 50;
 const TABLE_PAGE_SIZE = 40;
+const TOP_CAUSES_LIMIT = 10;
+const TOP_JOBS_LIMIT = 10;
 
 const CHART_PREFS_KEY = 'lensware_chart_prefs';
 const DEFAULT_CHART_PREFS = {
@@ -119,6 +121,11 @@ function setupEventListeners() {
         if (!tr) return;
         const idx = parseInt(tr.dataset.breaIdx, 10);
         showDetailFromRecord(breakagesListView[idx]);
+    });
+
+    document.getElementById('top-jobs-brea-tbody')?.addEventListener('click', e => {
+        const row = e.target.closest('tr[data-job]');
+        if (row?.dataset.job) showJobHistoryModal(row.dataset.job);
     });
 
     // Paginación
@@ -530,15 +537,105 @@ function lensCountFromRecord(r) {
 // Gráficas principales (en vivo)
 // ─────────────────────────────────────────────────────────────────────────────
 function getTopJobsBrea(stats) {
-    if (stats.top_jobs_brea?.length) return stats.top_jobs_brea;
+    if (stats.top_jobs_brea?.length) {
+        return stats.top_jobs_brea.slice(0, TOP_JOBS_LIMIT);
+    }
     const counts = {};
     (appData.breakages || []).forEach(r => {
         if (r.job) counts[r.job] = (counts[r.job] || 0) + 1;
     });
     return Object.entries(counts)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
+        .slice(0, TOP_JOBS_LIMIT)
         .map(([job, count]) => ({ job, count }));
+}
+
+function topCauseChartData(stats) {
+    const all = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
+    const total = all.reduce((s, [, v]) => s + v, 0);
+    if (all.length <= TOP_CAUSES_LIMIT) {
+        return { entries: all, total };
+    }
+    const top = all.slice(0, TOP_CAUSES_LIMIT);
+    const otros = all.slice(TOP_CAUSES_LIMIT).reduce((s, [, v]) => s + v, 0);
+    if (otros > 0) top.push(['Otros', otros]);
+    return { entries: top, total };
+}
+
+function renderTopJobsBreaTable(stats) {
+    const topJobs = getTopJobsBrea(stats);
+    const tbody = document.getElementById('top-jobs-brea-tbody');
+    const emptyMsg = document.getElementById('top-jobs-brea-empty');
+    const wrap = document.getElementById('top-jobs-brea-wrap');
+    const meta = document.getElementById('top-jobs-brea-meta');
+    destroyAppChart(chartInstanceKey('chart-top-jobs-brea', 'topJobs'));
+
+    if (!tbody) return;
+    const totalEventos = topJobs.reduce((s, j) => s + j.count, 0);
+    if (meta) {
+        meta.textContent = topJobs.length
+            ? `${topJobs.length} órdenes · ${formatNumber(totalEventos)} eventos`
+            : '';
+    }
+    if (emptyMsg) emptyMsg.classList.toggle('hidden', topJobs.length > 0);
+    if (wrap) wrap.style.display = topJobs.length ? 'block' : 'none';
+
+    tbody.innerHTML = topJobs.map((j, i) => `
+        <tr class="top-job-row" data-job="${escapeAttr(j.job)}" style="cursor:pointer;" title="Clic para ver historial de la orden">
+            <td style="color:#94a3b8;font-weight:600;">${i + 1}</td>
+            <td><strong>${escapeHtml(j.job)}</strong></td>
+            <td style="color:#ef4444;font-weight:700;text-align:center;">${formatNumber(j.count)}</td>
+            <td style="text-align:right;color:#3b82f6;font-size:12px;font-weight:600;"><i class="fas fa-history"></i> Ver historial</td>
+        </tr>`).join('');
+}
+
+function renderJobHistoryModalHtml(data) {
+    const tableHead = `<thead><tr>
+        <th>Job</th><th>Fecha</th><th>Hora</th><th>Estado</th><th>OD/OI</th>
+        <th>Usuario</th><th>Dispositivo</th><th>Lente</th>
+    </tr></thead>`;
+    return `
+        <p style="margin:0 0 16px;color:#64748b;font-size:13px;">
+            ${formatNumber(data.total_records)} registro(s) en ${data.sources_count} fuente(s).
+            Clic en una fila para ver el detalle.
+        </p>
+        ${data.sources.map(source => `
+            <div class="search-source-block" style="margin-bottom:16px;">
+                <div class="search-source-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <h3 style="font-size:14px;margin:0;"><i class="fas fa-${source.is_live ? 'broadcast-tower' : 'archive'}"></i> ${escapeHtml(source.label)}</h3>
+                    <span style="font-size:11px;padding:4px 10px;border-radius:20px;background:#f1f5f9;color:#475569;">${formatNumber(source.records.length)} reg.</span>
+                </div>
+                <div class="table-container table-scroll" style="max-height:min(320px,50vh);">
+                    <table class="data-table">${tableHead}
+                        <tbody>${source.records.map(r => searchRecordRowHtml(r)).join('')}</tbody>
+                    </table>
+                </div>
+            </div>`).join('')}`;
+}
+
+async function showJobHistoryModal(job) {
+    const modal = document.getElementById('modal-job-history');
+    const body = document.getElementById('job-history-body');
+    const titleEl = document.getElementById('modal-job-history-title');
+    if (!modal || !body) return;
+
+    if (titleEl) {
+        titleEl.innerHTML = `<i class="fas fa-history"></i> Historial — Job ${escapeHtml(job)}`;
+    }
+    body.innerHTML = '<p style="text-align:center;padding:40px;color:#94a3b8;"><i class="fas fa-circle-notch fa-spin-custom"></i> Cargando historial...</p>';
+    modal.classList.add('active');
+
+    try {
+        const r = await fetch(`api.php?action=search_job&job=${encodeURIComponent(job)}`);
+        const result = await r.json();
+        if (!result.success) {
+            body.innerHTML = `<p style="text-align:center;padding:40px;color:#94a3b8;">${escapeHtml(result.error || 'No se encontraron registros para esta orden.')}</p>`;
+            return;
+        }
+        body.innerHTML = renderJobHistoryModalHtml(result.data);
+    } catch (e) {
+        body.innerHTML = `<p style="text-align:center;padding:40px;color:#ef4444;">Error de conexión: ${escapeHtml(e.message)}</p>`;
+    }
 }
 
 function renderCharts(stats) {
@@ -551,11 +648,14 @@ function renderCharts(stats) {
     const statusMeta = document.getElementById('status-meta');
     if (statusMeta) statusMeta.textContent = `${statusEntries.length} estados`;
 
-    const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
-    const causeTotal = causeEntries.reduce((s, [, v]) => s + v, 0);
+    const { entries: causeEntries, total: causeTotal } = topCauseChartData(stats);
     const causePalette = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
     const causesMeta = document.getElementById('causes-meta');
-    if (causesMeta) causesMeta.textContent = causeTotal ? `${formatNumber(causeTotal)} eventos` : 'por evento';
+    if (causesMeta) {
+        causesMeta.textContent = causeTotal
+            ? `Top ${TOP_CAUSES_LIMIT} · ${formatNumber(causeTotal)} eventos`
+            : 'Top 10';
+    }
     if (causeEntries.length) {
         createAppChart('chart-causes', 'causes', {
             labels: causeEntries.map(([k]) => k),
@@ -585,45 +685,7 @@ function renderCharts(stats) {
         destroyAppChart(chartInstanceKey('chart-devices', 'devices'));
     }
 
-    const topJobs = getTopJobsBrea(stats);
-    const canvasTop = document.getElementById('chart-top-jobs-brea');
-    const emptyTop = document.getElementById('top-jobs-brea-meta');
-    const emptyMsg = document.getElementById('top-jobs-brea-empty');
-    if (emptyTop) {
-        emptyTop.textContent = topJobs.length
-            ? `${topJobs.reduce((s, j) => s + j.count, 0)} quiebras en top ${topJobs.length}`
-            : '';
-    }
-    if (canvasTop) canvasTop.style.display = topJobs.length ? 'block' : 'none';
-    if (emptyMsg) emptyMsg.classList.toggle('hidden', topJobs.length > 0);
-    if (topJobs.length) {
-        const labels = [...topJobs].reverse().map(j => j.job);
-        const values = [...topJobs].reverse().map(j => j.count);
-        const pref = getChartPref('topJobs');
-        const jobChartOpts = getChartOptions(pref);
-        jobChartOpts.onClick = (_evt, elements) => {
-            if (!elements.length) return;
-            const job = labels[elements[0].index];
-            switchTab('search');
-            const input = document.getElementById('global-search');
-            if (input) { input.value = job; globalSearch(job); }
-        };
-        jobChartOpts.plugins = jobChartOpts.plugins || {};
-        jobChartOpts.plugins.tooltip = {
-            callbacks: {
-                label: (ctx) => ` ${pref === 'bar-h' || pref === 'bar' ? ctx.parsed.x ?? ctx.parsed.y : ctx.parsed} quiebra(s)`,
-            },
-        };
-        createAppChart('chart-top-jobs-brea', 'topJobs', {
-            labels,
-            values,
-            colors: '#ef4444',
-            optionsOverride: jobChartOpts,
-            datasetOpts: { barThickness: 22 },
-        });
-    } else {
-        destroyAppChart(chartInstanceKey('chart-top-jobs-brea', 'topJobs'));
-    }
+    renderTopJobsBreaTable(stats);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1600,7 +1662,7 @@ function renderHistContent(data) {
         </div>
         <div class="hist-charts-row">
             <div class="chart-card">
-                <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3></div>
+                <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra (Top 10)</h3></div>
                 ${histChartWrap('hist-chart-causes')}
             </div>
             <div class="chart-card">
@@ -1701,7 +1763,7 @@ function renderHistCharts(stats) {
         skipIfEmpty: false,
     });
 
-    const causeEntries = Object.entries(stats.brea_causa || {}).sort((a, b) => b[1] - a[1]);
+    const { entries: causeEntries } = topCauseChartData(stats);
     const causePalette = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
     const causesCanvas = document.getElementById('hist-chart-causes');
     const causesParent = causesCanvas?.parentElement;

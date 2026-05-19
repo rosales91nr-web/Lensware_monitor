@@ -645,6 +645,8 @@ function togglePwd() {
         .chart-card canvas { width: 100%; height: 260px !important; max-height: 260px !important; display: block; }
         .chart-card .chart-wrap canvas { height: 100% !important; max-height: 240px !important; }
         #hist-content .chart-card { min-height: 280px; }
+        #top-jobs-brea-table tbody tr.top-job-row:hover { background: #eff6ff; }
+        #top-jobs-brea-wrap { margin-top: 8px; }
         .chart-card-wide { grid-column: 1 / -1; }
         .chart-card-wide canvas { height: 300px !important; max-height: 300px !important; }
         .chart-empty {
@@ -1441,7 +1443,7 @@ function togglePwd() {
                     <canvas id="chart-status" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="causes"><option value="doughnut">Pastel</option><option value="bar">Barras</option><option value="line">Líneas</option></select><span class="chart-meta" id="causes-meta">por evento</span></div></div>
+                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="causes"><option value="doughnut">Pastel</option><option value="bar">Barras</option><option value="line">Líneas</option></select><span class="chart-meta" id="causes-meta">Top 10</span></div></div>
                     <canvas id="chart-causes" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
             </div>
@@ -1462,11 +1464,16 @@ function togglePwd() {
             <div class="charts-row">
                 <div class="chart-card chart-card-wide">
                     <div class="chart-header">
-                        <h3><i class="fas fa-trophy" style="color:#ef4444;"></i> Top 10 Jobs con más quiebras</h3>
-                        <div class="chart-header-actions"><select class="chart-type-select" data-chart-key="topJobs"><option value="bar-h">Barras H</option><option value="bar">Barras</option><option value="line">Líneas</option></select><span class="chart-meta" id="top-jobs-brea-meta"></span></div>
+                        <h3><i class="fas fa-trophy" style="color:#ef4444;"></i> Top órdenes con quiebras</h3>
+                        <span class="chart-meta" id="top-jobs-brea-meta"></span>
                     </div>
-                    <canvas id="chart-top-jobs-brea" height="300" style="width:100%;height:300px;"></canvas>
                     <p id="top-jobs-brea-empty" class="chart-empty hidden">Sin quiebras registradas en este período</p>
+                    <div class="table-container table-scroll" id="top-jobs-brea-wrap">
+                        <table class="data-table" id="top-jobs-brea-table">
+                            <thead><tr><th>#</th><th>Job / Orden</th><th>Eventos quiebra</th><th></th></tr></thead>
+                            <tbody id="top-jobs-brea-tbody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1733,6 +1740,17 @@ function togglePwd() {
             <button class="modal-close">&times;</button>
         </div>
         <div class="modal-body" id="detail-body"></div>
+    </div>
+</div>
+<div id="modal-job-history" class="modal">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h2 id="modal-job-history-title"><i class="fas fa-history"></i> Historial de orden</h2>
+            <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="job-history-body">
+            <p style="text-align:center;color:#94a3b8;padding:24px;">Cargando historial...</p>
+        </div>
     </div>
 </div>
 
