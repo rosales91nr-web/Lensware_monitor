@@ -596,44 +596,95 @@ function getBreakages(array $records): array {
 }
 
 function getDeviceStats(array $records): array {
-    $stats = []; $jobs = [];
+    $stats = [];
+    $jobs = [];
+    $jobsConBrea = [];
+    $incidentes = [];
+
     foreach ($records as $r) {
         $dev = trim($r['device'] ?? '');
         if ($dev === '') continue;
+
         if (!isset($stats[$dev])) {
-            $stats[$dev] = ['name' => $dev, 'device' => $dev, 'total' => 0, 'jobs' => 0, 'brea' => 0, 'breakages' => 0, 'rate' => 0];
-            $jobs[$dev]  = [];
+            $stats[$dev] = [
+                'name' => $dev,
+                'device' => $dev,
+                'total' => 0,
+                'jobs' => 0,
+                'jobs_con_brea' => 0,
+                'brea_eventos' => 0,
+                'brea' => 0,
+                'breakages' => 0,
+                'rate' => 0,
+            ];
+            $jobs[$dev] = [];
+            $jobsConBrea[$dev] = [];
+            $incidentes[$dev] = [];
         }
+
         $stats[$dev]['total']++;
         $jobs[$dev][$r['job']] = true;
-        if ($r['is_breakage']) { $stats[$dev]['brea']++; $stats[$dev]['breakages']++; }
+
+        if ($r['is_breakage']) {
+            $stats[$dev]['brea']++;
+            $stats[$dev]['breakages']++;
+            $jobsConBrea[$dev][$r['job']] = true;
+            $timeKey = substr($r['time_raw'] ?? '00:00:00', 0, 5);
+            $incidentKey = $r['job'] . '|' . ($r['date_raw'] ?? '') . '|' . $timeKey;
+            $incidentes[$dev][$incidentKey] = true;
+        }
     }
+
     foreach ($stats as $dev => &$s) {
         $s['jobs'] = count($jobs[$dev]);
-        $s['rate'] = $s['jobs'] > 0 ? round($s['brea'] / $s['jobs'] * 100, 2) : 0;
+        $s['jobs_con_brea'] = count($jobsConBrea[$dev]);
+        $s['brea_eventos'] = count($incidentes[$dev]);
+        $s['rate'] = $s['jobs'] > 0 ? round($s['jobs_con_brea'] / $s['jobs'] * 100, 2) : 0;
     }
+    unset($s);
+
     usort($stats, fn($a, $b) => $b['total'] - $a['total']);
     return array_values($stats);
 }
 
 function getDeviceDetails(array $records, string $deviceName): array {
     $filtered = array_values(array_filter($records, fn($r) => $r['device'] === $deviceName));
-    $hourDist = array_fill(0, 24, 0); $jobs = []; $brea = 0;
+    $hourDist = array_fill(0, 24, 0);
+    $jobs = [];
+    $jobsConBrea = [];
+    $incidentes = [];
+
     foreach ($filtered as $r) {
         $hour = recordHour($r['time_raw']);
         if ($hour >= 0 && $hour < 24) $hourDist[$hour]++;
-        if (!isset($jobs[$r['job']])) $jobs[$r['job']] = ['total' => 0, 'brea' => 0];
+
+        if (!isset($jobs[$r['job']])) {
+            $jobs[$r['job']] = ['total' => 0, 'brea' => 0, 'brea_eventos' => 0];
+        }
         $jobs[$r['job']]['total']++;
-        if ($r['is_breakage']) { $jobs[$r['job']]['brea']++; $brea++; }
+
+        if ($r['is_breakage']) {
+            $jobs[$r['job']]['brea']++;
+            $jobsConBrea[$r['job']] = true;
+            $timeKey = substr($r['time_raw'] ?? '00:00:00', 0, 5);
+            $incidentKey = $r['job'] . '|' . ($r['date_raw'] ?? '') . '|' . $timeKey;
+            if (!isset($incidentes[$incidentKey])) {
+                $incidentes[$incidentKey] = true;
+                $jobs[$r['job']]['brea_eventos']++;
+            }
+        }
     }
+
     arsort($jobs);
     return [
-        'records'           => $filtered,
-        'total_records'     => count($filtered),
-        'total_jobs'        => count($jobs),
-        'breakages'         => $brea,
-        'hour_distribution' => $hourDist,
-        'jobs'              => $jobs,
+        'records'            => $filtered,
+        'total_records'      => count($filtered),
+        'total_jobs'         => count($jobs),
+        'jobs_con_brea'      => count($jobsConBrea),
+        'brea_eventos'       => count($incidentes),
+        'breakages'          => count($incidentes),
+        'hour_distribution'  => $hourDist,
+        'jobs'               => $jobs,
     ];
 }
 
@@ -855,11 +906,12 @@ function sortRecordsNewestFirst(array $records): array {
 function miniStatsForRecords(array $records): array {
     $s = calculateStatsCorrected($records);
     return [
-        'total'             => $s['total'],
-        'jobs_unicos'       => $s['jobs_unicos'],
-        'jobs_con_brea'     => $s['jobs_con_brea'],
-        'total_lentes_brea' => $s['total_lentes_brea'],
-        'brea_tasa'         => $s['brea_tasa'],
+        'total'                 => $s['total'],
+        'jobs_unicos'           => $s['jobs_unicos'],
+        'jobs_unicos_afectados' => $s['jobs_unicos_afectados'],
+        'jobs_con_brea'         => $s['jobs_con_brea'],
+        'total_lentes_brea'     => $s['total_lentes_brea'],
+        'brea_tasa'             => $s['brea_tasa'],
     ];
 }
 

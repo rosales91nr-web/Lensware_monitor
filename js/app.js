@@ -209,6 +209,9 @@ function switchTab(tabId) {
         if (lastDashboardStats) renderCharts(lastDashboardStats);
         else refreshDashboardCharts();
     }
+    if (tabId === 'historico' && histState.data?.stats) {
+        scheduleHistChartsRender(histState.data.stats);
+    }
     if (tabId === 'devices') renderDevices();
     if (tabId === 'operators') renderOperators();
     if (tabId === 'activity') renderActivity();
@@ -267,20 +270,26 @@ async function refreshData() {
 // ─────────────────────────────────────────────────────────────────────────────
 // UI principal (datos en vivo)
 // ─────────────────────────────────────────────────────────────────────────────
+function breaMetrics(stats) {
+    const ordenesUnicas = stats?.jobs_unicos_afectados ?? 0;
+    const eventos = stats?.jobs_con_brea ?? 0;
+    return { ordenesUnicas, eventos };
+}
+
 function updateUI() {
     const stats = appData.stats;
+    const brea = breaMetrics(stats);
     document.getElementById('kpi-total').textContent  = formatNumber(stats.total || 0);
     document.getElementById('kpi-jobs').textContent   = formatNumber(stats.jobs_unicos || 0);
-    // kpi-brea: órdenes únicas con quiebra
-    document.getElementById('kpi-brea').textContent   = formatNumber(stats.jobs_con_brea || 0);
-    // kpi-lentes-brea: total lentes quebrados (si existe el elemento en el HTML)
+    document.getElementById('kpi-brea').textContent   = formatNumber(brea.ordenesUnicas);
+    const kpiEventos = document.getElementById('kpi-brea-eventos');
+    if (kpiEventos) kpiEventos.textContent = formatNumber(brea.eventos);
     const kpiLentesBrea = document.getElementById('kpi-lentes-brea');
     if (kpiLentesBrea) kpiLentesBrea.textContent = formatNumber(stats.total_lentes_brea || 0);
     document.getElementById('kpi-rate').textContent   = `${(stats.brea_tasa || 0).toFixed(1)}%`;
     document.getElementById('kpi-users').textContent  = formatNumber(stats.usuarios || 0);
     document.getElementById('kpi-devices').textContent= formatNumber(stats.dispositivos || 0);
-    // badge: órdenes únicas con quiebra
-    document.getElementById('brea-badge').textContent = stats.jobs_con_brea || 0;
+    document.getElementById('brea-badge').textContent = brea.ordenesUnicas;
 
     renderCharts(stats);
     syncChartTypeSelects();
@@ -480,7 +489,10 @@ function onChartTypeChange(e) {
     chartPrefs[sel.dataset.chartKey] = sel.value;
     saveChartPrefs();
     if (lastDashboardStats) renderCharts(lastDashboardStats);
-    if (lastHistStats) renderHistCharts(lastHistStats);
+    if (lastHistStats) {
+        renderHistCharts(lastHistStats);
+        requestAnimationFrame(resizeHistCharts);
+    }
     if (deviceModalHourData) renderDeviceHourChart();
 }
 
@@ -547,7 +559,7 @@ function renderCharts(stats) {
     const causeTotal = causeEntries.reduce((s, [, v]) => s + v, 0);
     const causePalette = ['#EF4444','#F59E0B','#3B82F6','#10B981','#8B5CF6','#EC4899','#06B6D4','#F97316','#14B8A6','#A855F7','#F43F5E','#84CC16','#0EA5E9','#EAB308','#FB7185'];
     const causesMeta = document.getElementById('causes-meta');
-    if (causesMeta) causesMeta.textContent = causeTotal ? `${formatNumber(causeTotal)} órdenes` : 'por orden';
+    if (causesMeta) causesMeta.textContent = causeTotal ? `${formatNumber(causeTotal)} eventos` : 'por evento';
     if (causeEntries.length) {
         createAppChart('chart-causes', 'causes', {
             labels: causeEntries.map(([k]) => k),
@@ -790,7 +802,10 @@ function renderBreakages() {
     if (pageInfo) pageInfo.textContent = `Página ${page} de ${totalPages} (${formatNumber(total)} órdenes)`;
     if (prevBtn) prevBtn.disabled = page <= 1;
     if (nextBtn) nextBtn.disabled = page >= totalPages;
-    document.getElementById('breakages-count').textContent = formatNumber(total);
+    const ordenesUnicas = new Set(data.map(r => r.job)).size;
+    document.getElementById('breakages-count').textContent = formatNumber(ordenesUnicas);
+    const eventosBadge = document.getElementById('breakages-eventos-count');
+    if (eventosBadge) eventosBadge.textContent = formatNumber(total);
     const lentesBadge = document.getElementById('breakages-lentes-count');
     if (lentesBadge) {
         lentesBadge.textContent = formatNumber(data.reduce((acc, r) => acc + lensCountFromRecord(r), 0));
@@ -809,6 +824,8 @@ function renderDevices() {
             <td><strong>${escapeHtml(d.device)}</strong></td>
             <td>${formatNumber(d.total)}</td>
             <td>${formatNumber(d.jobs)}</td>
+            <td style="color:#ef4444;font-weight:600;">${formatNumber(d.jobs_con_brea ?? 0)}</td>
+            <td>${formatNumber(d.brea_eventos ?? d.breakages ?? 0)}</td>
         </tr>`).join('');
 }
 
@@ -1000,8 +1017,12 @@ async function showDeviceDetail(deviceName) {
         const modal = document.getElementById('modal-device');
         document.getElementById('modal-device-title').textContent = `📟 ${deviceName}`;
         document.getElementById('device-details').innerHTML = `
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px;">
-                ${[['Total registros',data.total_records,'#3b82f6'],['Jobs únicos',data.total_jobs,'#10b981'],['Quiebras',data.breakages,'#ef4444']]
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:20px;">
+                ${[
+                    ['Total registros', data.total_records, '#3b82f6'],
+                    ['Jobs únicos', data.total_jobs, '#10b981'],
+                    ['Órdenes c/quiebra', data.jobs_con_brea ?? 0, '#ef4444'],
+                    ['Eventos quiebra', data.brea_eventos ?? data.breakages ?? 0, '#dc2626'],
                   .map(([l,v,c])=>`<div style="background:#f8fafc;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:6px;">${l}</div><div style="font-size:32px;font-weight:800;color:${c};">${formatNumber(v)}</div></div>`).join('')}
             </div>
             <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;">
@@ -1022,14 +1043,14 @@ async function showDeviceDetail(deviceName) {
                     <thead><tr style="background:#f8fafc;">
                         <th style="padding:10px 12px;text-align:left;">Job</th>
                         <th style="padding:10px 12px;text-align:center;">Total</th>
-                        <th style="padding:10px 12px;text-align:center;color:#ef4444;">Quiebras</th>
+                        <th style="padding:10px 12px;text-align:center;color:#ef4444;">Eventos</th>
                     </tr></thead>
                     <tbody>
                     ${Object.entries(data.jobs||{}).slice(0,30).map(([job,d])=>`
                         <tr style="border-bottom:1px solid #f1f5f9;">
                             <td style="padding:10px 12px;font-family:monospace;font-weight:600;">${escapeHtml(job)}</td>
                             <td style="padding:10px 12px;text-align:center;">${formatNumber(d.total)}</td>
-                            <td style="padding:10px 12px;text-align:center;color:#ef4444;font-weight:600;">${formatNumber(d.brea)}</td>
+                            <td style="padding:10px 12px;text-align:center;color:#ef4444;font-weight:600;">${formatNumber(d.brea_eventos ?? d.brea)}</td>
                         </tr>`).join('')}
                     </tbody>
                 </table>
@@ -1412,7 +1433,8 @@ async function loadHistSingleDayData(hourFrom, hourTo) {
         else if (hourTo !== '') rangeLabel = ` · hasta ${hourTo}:59`;
 
         const stats = result.data.stats;
-        showHistStatus('loaded', `✅ ${formatNumber(stats.total)} registros · ${formatNumber(stats.jobs_unicos)} jobs · ${formatNumber(stats.jobs_con_brea)} quiebras`);
+        const brea = breaMetrics(stats);
+        showHistStatus('loaded', `✅ ${formatNumber(stats.total)} registros · ${formatNumber(stats.jobs_unicos)} jobs · ${formatNumber(brea.ordenesUnicas)} órdenes c/quiebra · ${formatNumber(brea.eventos)} eventos`);
         document.getElementById('hist-banner-title').textContent = `Visualizando: ${dayLabel}${rangeLabel}`;
         document.getElementById('hist-banner-sub').textContent = `Archivo: ${histState.selectedFile}`;
         document.getElementById('hist-banner').classList.remove('hidden');
@@ -1451,8 +1473,9 @@ async function loadHistRangeData(hourFrom, hourTo) {
         else if (hourFrom !== '') hourLabel = ` · desde ${hourFrom}:00`;
         else if (hourTo !== '') hourLabel = ` · hasta ${hourTo}:59`;
 
+        const brea = breaMetrics(stats);
         showHistStatus('loaded',
-            `✅ ${formatNumber(meta.days_with_data || 0)} días · ${formatNumber(stats.total)} registros · ${formatNumber(stats.jobs_con_brea)} órdenes c/quiebra`
+            `✅ ${formatNumber(meta.days_with_data || 0)} días · ${formatNumber(stats.total)} registros · ${formatNumber(brea.ordenesUnicas)} órdenes c/quiebra · ${formatNumber(brea.eventos)} eventos`
         );
         document.getElementById('hist-banner-title').textContent =
             `Rango: ${histState.dateFrom} → ${histState.dateTo}${hourLabel}`;
@@ -1472,11 +1495,14 @@ function renderHistDailyCompareTable(statsByDay) {
     if (entries.length < 2) return '';
     const rows = entries.map(([date, s]) => {
         const label = date.split('-').reverse().join('/');
+        const ordenes = s.jobs_unicos_afectados ?? 0;
+        const eventos = s.jobs_con_brea ?? 0;
         return `<tr>
             <td><strong>${escapeHtml(label)}</strong></td>
             <td>${formatNumber(s.total)}</td>
             <td>${formatNumber(s.jobs_unicos)}</td>
-            <td style="color:#ef4444;font-weight:600;">${formatNumber(s.jobs_con_brea)}</td>
+            <td style="color:#ef4444;font-weight:600;">${formatNumber(ordenes)}</td>
+            <td>${formatNumber(eventos)}</td>
             <td>${formatNumber(s.total_lentes_brea || 0)}</td>
             <td>${(s.brea_tasa || 0).toFixed(1)}%</td>
         </tr>`;
@@ -1488,7 +1514,7 @@ function renderHistDailyCompareTable(statsByDay) {
                 <table class="data-table">
                     <thead><tr>
                         <th>Fecha</th><th>Registros</th><th>Jobs</th>
-                        <th>Órdenes c/quiebra</th><th>Lentes quiebra</th><th>Tasa</th>
+                        <th>Órdenes c/quiebra</th><th>Eventos</th><th>Lentes quiebra</th><th>Tasa</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
@@ -1496,10 +1522,34 @@ function renderHistDailyCompareTable(statsByDay) {
         </div>`;
 }
 
+function histChartWrap(canvasId) {
+    return `<div class="chart-wrap" style="position:relative;height:240px;width:100%;"><canvas id="${canvasId}"></canvas></div>`;
+}
+
+function resizeHistCharts() {
+    Object.entries(chartInstances).forEach(([key, ch]) => {
+        if (key.startsWith('hist:') && ch?.canvas?.isConnected) {
+            try { ch.resize(); } catch (_) { /* ignore */ }
+        }
+    });
+}
+
+function scheduleHistChartsRender(stats) {
+    const run = () => {
+        enrichHistChartHeaders();
+        renderHistCharts(stats);
+        syncChartTypeSelects();
+        renderHistBreakagesTable();
+        requestAnimationFrame(resizeHistCharts);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
 function renderHistContent(data) {
     const stats    = data.stats;
     const breakages= data.breakages || [];
     const meta     = data.range_meta || null;
+    const brea     = breaMetrics(stats);
     const compareHtml = renderHistDailyCompareTable(data.stats_by_day);
     const kpiDevices = meta
         ? `<div class="hist-kpi-card"><h4>Días con datos</h4><p>${formatNumber(meta.days_with_data)}</p></div>`
@@ -1512,9 +1562,10 @@ function renderHistContent(data) {
         <div class="hist-kpi-row">
             <div class="hist-kpi-card"><h4>Total Registros</h4><p>${formatNumber(stats.total)}</p></div>
             <div class="hist-kpi-card"><h4>Jobs Únicos</h4><p>${formatNumber(stats.jobs_unicos)}</p></div>
-            <div class="hist-kpi-card red"><h4>Órdenes c/Quiebra</h4><p>${formatNumber(stats.jobs_con_brea)}</p></div>
+            <div class="hist-kpi-card red"><h4>Órdenes c/Quiebra</h4><p>${formatNumber(brea.ordenesUnicas)}</p><small style="font-size:10px;color:#94a3b8;">órdenes únicas</small></div>
+            <div class="hist-kpi-card red"><h4>Eventos Quiebra</h4><p>${formatNumber(brea.eventos)}</p><small style="font-size:10px;color:#94a3b8;">incidentes</small></div>
             <div class="hist-kpi-card red"><h4>Lentes Quebrados</h4><p>${formatNumber(stats.total_lentes_brea || 0)}</p></div>
-            <div class="hist-kpi-card"><h4>Tasa Quiebra</h4><p>${stats.brea_tasa.toFixed(1)}%</p></div>
+            <div class="hist-kpi-card"><h4>Tasa Quiebra</h4><p>${(stats.brea_tasa ?? 0).toFixed(1)}%</p></div>
             <div class="hist-kpi-card"><h4>Operadores</h4><p>${formatNumber(stats.usuarios)}</p></div>
             ${kpiDevices}
         </div>
@@ -1523,28 +1574,28 @@ function renderHistContent(data) {
         <div class="hist-charts-row">
             <div class="chart-card">
                 <div class="chart-header"><h3><i class="fas fa-chart-bar"></i> Actividad por Etapa</h3></div>
-                <canvas id="hist-chart-status" height="240" style="width:100%;height:240px;"></canvas>
+                ${histChartWrap('hist-chart-status')}
             </div>
             <div class="chart-card">
                 <div class="chart-header"><h3><i class="fas fa-clock"></i> Actividad por Hora</h3></div>
-                <canvas id="hist-chart-hour" height="240" style="width:100%;height:240px;"></canvas>
+                ${histChartWrap('hist-chart-hour')}
             </div>
         </div>
         <div class="hist-charts-row">
             <div class="chart-card">
                 <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3></div>
-                <canvas id="hist-chart-causes" height="240" style="width:100%;height:240px;"></canvas>
+                ${histChartWrap('hist-chart-causes')}
             </div>
             <div class="chart-card">
                 <div class="chart-header"><h3><i class="fas fa-microchip"></i> Top Dispositivos</h3></div>
-                <canvas id="hist-chart-devices" height="240" style="width:100%;height:240px;"></canvas>
+                ${histChartWrap('hist-chart-devices')}
             </div>
         </div>
 
         <!-- Tabla de quiebras -->
         <div style="margin-top:4px;">
             <div class="breakages-header" style="margin-bottom:14px;">
-                <h2 style="font-size:16px;"><i class="fas fa-bug" style="color:#ef4444;"></i> Quiebras del período (${formatNumber(breakages.length)})</h2>
+                <h2 style="font-size:16px;"><i class="fas fa-bug" style="color:#ef4444;"></i> Quiebras del período (${formatNumber(new Set(breakages.map(b => b.job)).size)} órdenes · ${formatNumber(breakages.length)} eventos)</h2>
             </div>
             ${breakages.length === 0
                 ? '<div style="background:white;border-radius:14px;padding:40px;text-align:center;color:#94a3b8;border:1px solid #e2e8f0;">Sin quiebras en este período ✅</div>'
@@ -1569,13 +1620,15 @@ function renderHistContent(data) {
             </div>
             <div class="table-container table-scroll">
                 <table class="data-table">
-                    <thead><tr><th>Dispositivo</th><th>Total Reg.</th><th>Jobs</th></tr></thead>
+                    <thead><tr><th>Dispositivo</th><th>Total Reg.</th><th>Jobs</th><th>Órdenes c/quiebra</th><th>Eventos</th></tr></thead>
                     <tbody>
                     ${(data.device_stats||[]).map(d=>`
                         <tr>
                             <td><strong>${escapeHtml(d.device)}</strong></td>
                             <td>${formatNumber(d.total)}</td>
                             <td>${formatNumber(d.jobs)}</td>
+                            <td style="color:#ef4444;font-weight:600;">${formatNumber(d.jobs_con_brea ?? 0)}</td>
+                            <td>${formatNumber(d.brea_eventos ?? d.breakages ?? 0)}</td>
                         </tr>`).join('')}
                     </tbody>
                 </table>
@@ -1585,12 +1638,7 @@ function renderHistContent(data) {
 
     histBreakagesCache = breakages;
     histBreaPage = 1;
-    setTimeout(() => {
-        enrichHistChartHeaders();
-        renderHistCharts(stats);
-        syncChartTypeSelects();
-        renderHistBreakagesTable();
-    }, 100);
+    scheduleHistChartsRender(stats);
 }
 
 function renderHistBreakagesTable() {
@@ -1669,6 +1717,7 @@ function renderHistCharts(stats) {
         destroyAppChart(chartInstanceKey('hist-chart-devices', 'devices'));
     }
     syncChartTypeSelects();
+    requestAnimationFrame(resizeHistCharts);
 }
 
 function showHistStatus(type, text) {

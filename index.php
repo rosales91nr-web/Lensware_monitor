@@ -643,6 +643,8 @@ function togglePwd() {
         .chart-header h3 { font-size: 14px; font-weight: 700; color: #1e293b; }
         .chart-meta { font-size: 11px; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 20px; }
         .chart-card canvas { width: 100%; height: 260px !important; max-height: 260px !important; display: block; }
+        .chart-card .chart-wrap canvas { height: 100% !important; max-height: 240px !important; }
+        #hist-content .chart-card { min-height: 280px; }
         .chart-card-wide { grid-column: 1 / -1; }
         .chart-card-wide canvas { height: 300px !important; max-height: 300px !important; }
         .chart-empty {
@@ -1427,6 +1429,7 @@ function togglePwd() {
                 <div class="kpi-card"><div class="kpi-icon blue"><i class="fas fa-database"></i></div><div class="kpi-info"><h3>Total Registros</h3><p id="kpi-total">0</p></div></div>
                 <div class="kpi-card"><div class="kpi-icon teal"><i class="fas fa-briefcase"></i></div><div class="kpi-info"><h3>Jobs Únicos</h3><p id="kpi-jobs">0</p></div></div>
                 <div class="kpi-card"><div class="kpi-icon red"><i class="fas fa-exclamation-triangle"></i></div><div class="kpi-info"><h3>Órdenes c/Quiebra</h3><p id="kpi-brea">0</p><small style="color:#94a3b8;font-size:11px;">Órdenes únicas</small></div></div>
+                <div class="kpi-card"><div class="kpi-icon red" style="background:#fff1f2;"><i class="fas fa-bolt" style="color:#dc2626;"></i></div><div class="kpi-info"><h3>Eventos Quiebra</h3><p id="kpi-brea-eventos">0</p><small style="color:#94a3b8;font-size:11px;">Incidentes en el período</small></div></div>
                 <div class="kpi-card"><div class="kpi-icon red" style="background:#fef2f2;"><i class="fas fa-eye-slash" style="color:#dc2626;"></i></div><div class="kpi-info"><h3>Total Lentes Quebrados</h3><p id="kpi-lentes-brea">0</p><small style="color:#94a3b8;font-size:11px;">Lentes individuales</small></div></div>
                 <div class="kpi-card"><div class="kpi-icon orange"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><h3>Tasa Quiebra</h3><p id="kpi-rate">0%</p></div></div>
                 <div class="kpi-card"><div class="kpi-icon green"><i class="fas fa-user-check"></i></div><div class="kpi-info"><h3>Operadores</h3><p id="kpi-users">0</p></div></div>
@@ -1438,7 +1441,7 @@ function togglePwd() {
                     <canvas id="chart-status" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
                 <div class="chart-card">
-                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="causes"><option value="doughnut">Pastel</option><option value="bar">Barras</option><option value="line">Líneas</option></select><span class="chart-meta" id="causes-meta">por orden</span></div></div>
+                    <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> Causas de Quiebra</h3><div class="chart-header-actions"><select class="chart-type-select" data-chart-key="causes"><option value="doughnut">Pastel</option><option value="bar">Barras</option><option value="line">Líneas</option></select><span class="chart-meta" id="causes-meta">por evento</span></div></div>
                     <canvas id="chart-causes" height="260" style="width:100%;height:260px;"></canvas>
                 </div>
             </div>
@@ -1489,7 +1492,7 @@ function togglePwd() {
                 <span id="brea-page-info">Página 1</span>
                 <button type="button" id="brea-next-page">Siguiente →</button>
             </div>
-            <div class="table-footer"><span id="breakages-count">0</span> órdenes únicas con quiebra &nbsp;|&nbsp; <span id="breakages-lentes-count">0</span> lentes quebrados</div>
+            <div class="table-footer"><span id="breakages-count">0</span> órdenes únicas &nbsp;|&nbsp; <span id="breakages-eventos-count">0</span> eventos &nbsp;|&nbsp; <span id="breakages-lentes-count">0</span> lentes quebrados</div>
         </div>
 
         <!-- =================== ACTIVITY TAB =================== -->
@@ -1520,7 +1523,7 @@ function togglePwd() {
         <div id="tab-devices" class="tab-content">
             <div class="table-container table-scroll">
                 <table class="data-table" id="devices-table">
-                    <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th></tr></thead>
+                    <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th><th>Órdenes c/quiebra</th><th>Eventos</th></tr></thead>
                     <tbody id="devices-tbody"></tbody>
                 </table>
             </div>
