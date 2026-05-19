@@ -1023,7 +1023,7 @@ async function showDeviceDetail(deviceName) {
                     ['Jobs únicos', data.total_jobs, '#10b981'],
                     ['Órdenes c/quiebra', data.jobs_con_brea ?? 0, '#ef4444'],
                     ['Eventos quiebra', data.brea_eventos ?? data.breakages ?? 0, '#dc2626'],
-                  .map(([l,v,c])=>`<div style="background:#f8fafc;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:6px;">${l}</div><div style="font-size:32px;font-weight:800;color:${c};">${formatNumber(v)}</div></div>`).join('')}
+                ].map(([l,v,c])=>`<div style="background:#f8fafc;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:6px;">${l}</div><div style="font-size:32px;font-weight:800;color:${c};">${formatNumber(v)}</div></div>`).join('')}
             </div>
             <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;">
