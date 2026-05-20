@@ -1317,10 +1317,11 @@ function syncLiveData(bool $forceRefresh = false): array {
 }
 
 function logMessage(string $message, string $level = 'info'): void {
-    $logDir = __DIR__ . '/../logs';
-    if (!is_dir($logDir)) @mkdir($logDir, 0777, true);
-    $logFile = $logDir . '/app.log';
+    $logDir = dirname(LOG_FILE);
+    if (!is_dir($logDir)) {
+        mkdir($logDir, 0777, true);
+    }
     $timestamp = date('Y-m-d H:i:s');
     $entry = "[$timestamp] [$level] $message" . PHP_EOL;
-    @file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX);
+    @file_put_contents(LOG_FILE, $entry, FILE_APPEND | LOCK_EX);
 }
