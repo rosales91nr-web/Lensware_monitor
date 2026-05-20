@@ -872,28 +872,6 @@ function filterRecordsByHourRange(array $records, ?int $hourFrom, ?int $hourTo):
     }));
 }
 
-function mergeRecordsDeduped(array $records): array {
-    $seen = [];
-    $out  = [];
-    foreach ($records as $r) {
-        $sig = recordSignature($r);
-        if (isset($seen[$sig])) continue;
-        $seen[$sig] = true;
-        $out[] = $r;
-    }
-    return sortRecordsNewestFirst($out);
-}
-
-function recordSignature(array $r): string {
-    return implode('|', [
-        $r['job'] ?? '',
-        $r['date_raw'] ?? '',
-        $r['time_raw'] ?? '',
-        $r['status'] ?? '',
-        $r['side'] ?? '',
-    ]);
-}
-
 function sortRecordsNewestFirst(array $records): array {
     usort($records, function($a, $b) {
         $da = ($a['date_raw'] ?? '') . ' ' . ($a['time_raw'] ?? '');
@@ -967,26 +945,23 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
 
     if ($merged === []) return null;
 
-    $deduped           = mergeRecordsDeduped($merged);
-    $duplicatesRemoved = count($merged) - count($deduped);
+    $records = sortRecordsNewestFirst($merged);
 
     return [
-        'records'      => $deduped,
-        'stats'        => calculateStatsCorrected($deduped),
-        'breakages'    => getBreakagesConsolidated($deduped),
-        'device_stats' => getDeviceStats($deduped),
+        'records'      => $records,
+        'stats'        => calculateStatsCorrected($records),
+        'breakages'    => getBreakagesConsolidated($records),
+        'device_stats' => getDeviceStats($records),
         'filename'     => "RANGO_{$dateFrom}_a_{$dateTo}",
         'source'       => 'backup_range',
         'filters'      => ['date_from' => $dateFrom, 'date_to' => $dateTo, 'hour_from' => $hourFrom, 'hour_to' => $hourTo],
         'range_meta'   => [
-            'date_from'           => $dateFrom,
-            'date_to'             => $dateTo,
-            'days_in_range'       => $days,
-            'days_with_data'      => count($statsByDay),
-            'files_loaded'        => $filesLoaded,
-            'records_before_dedup'=> count($merged),
-            'records_after_dedup' => count($deduped),
-            'duplicates_removed'  => $duplicatesRemoved,
+            'date_from'      => $dateFrom,
+            'date_to'        => $dateTo,
+            'days_in_range'  => $days,
+            'days_with_data' => count($statsByDay),
+            'files_loaded'   => $filesLoaded,
+            'records_count'  => count($records),
         ],
         'stats_by_day' => $statsByDay,
     ];
@@ -1055,16 +1030,12 @@ function collectLiveRecordsForSearch(): array {
 
 function searchJobHistory(string $jobQuery): array {
     $jobQuery = trim($jobQuery);
-    $seen     = [];
     $sources  = [];
     $total    = 0;
 
     // Datos en vivo
     $liveRecords = sortRecordsNewestFirst(filterRecordsByJob(collectLiveRecordsForSearch(), $jobQuery));
     if (!empty($liveRecords)) {
-        foreach ($liveRecords as $r) {
-            $seen[recordSignature($r)] = true;
-        }
         $sources[] = [
             'id'       => 'live',
             'label'    => 'En vivo (datos actuales)',
@@ -1085,17 +1056,8 @@ function searchJobHistory(string $jobQuery): array {
         $matches = $data ? filterRecordsByJob($data['records'] ?? [], $jobQuery) : [];
         if (empty($matches)) continue;
 
-        $unique = [];
-        foreach ($matches as $r) {
-            $sig = recordSignature($r);
-            if (isset($seen[$sig])) continue;
-            $seen[$sig] = true;
-            $unique[] = $r;
-        }
-        if (empty($unique)) continue;
-
-        $unique = sortRecordsNewestFirst($unique);
-        $label  = $meta['label'] . ($meta['is_daily'] ? ' · backup diario 23:59' : ' · backup');
+        $matches = sortRecordsNewestFirst($matches);
+        $label   = $meta['label'] . ($meta['is_daily'] ? ' · backup diario 23:59' : ' · backup');
 
         $sources[] = [
             'id'       => 'backup_' . $meta['date'],
@@ -1103,9 +1065,9 @@ function searchJobHistory(string $jobQuery): array {
             'date'     => $meta['date'],
             'filename' => $meta['filename'],
             'is_live'  => false,
-            'records'  => $unique,
+            'records'  => $matches,
         ];
-        $total += count($unique);
+        $total += count($matches);
     }
 
     return [

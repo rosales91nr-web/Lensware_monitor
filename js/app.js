@@ -1553,7 +1553,7 @@ async function loadHistRangeData(hourFrom, hourTo) {
         document.getElementById('hist-banner-title').textContent =
             `Rango: ${histState.dateFrom} → ${histState.dateTo}${hourLabel}`;
         document.getElementById('hist-banner-sub').textContent =
-            `${meta.days_with_data || 0} días con datos · ${meta.duplicates_removed || 0} duplicados eliminados · ${meta.files_loaded?.length || 0} fuentes`;
+            `${meta.days_with_data || 0} días con datos · ${formatNumber(stats.total)} registros · ${meta.files_loaded?.length || 0} fuentes`;
         document.getElementById('hist-banner').classList.remove('hidden');
         renderHistContent(result.data);
         updateHistLoadButton();
