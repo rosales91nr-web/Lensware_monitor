@@ -4,11 +4,14 @@ FROM php:8.2-fpm-alpine
 RUN apk add --no-cache nginx supervisor \
     && docker-php-ext-install opcache
 
-# Create required directories
+# Crear TODAS las carpetas necesarias (incluyendo las de Railway)
 RUN mkdir -p /var/www/html/cache \
              /var/www/html/backups \
              /var/www/html/logs \
              /var/www/html/uploads \
+             /var/www/html/data/reports \
+             /var/www/html/data/staging \
+             /var/www/html/data/backups \
     && chown -R www-data:www-data /var/www/html
 
 # Copy nginx config
@@ -24,7 +27,8 @@ RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 777 /var/www/html/cache \
                     /var/www/html/backups \
                     /var/www/html/logs \
-                    /var/www/html/uploads
+                    /var/www/html/uploads \
+                    /var/www/html/data
 
 EXPOSE 8080
 
