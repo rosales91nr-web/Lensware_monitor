@@ -1,36 +1,62 @@
 <?php
-// config.php — Lensware Pro (XAMPP local / Windows)
+// config.php — Lensware Pro (Multi-entorno: Windows local / Railway)
 
 date_default_timezone_set('America/Costa_Rica');
 
+// Detectar entorno Railway
+$isRailway = getenv('RAILWAY_ENVIRONMENT') === 'production' || 
+             getenv('RAILWAY_SERVICE_ID') !== false ||
+             getenv('APP_ENV') === 'railway';
+
 // Cargar .env del proyecto (opcional)
-loadLocalEnv(__DIR__ . '/.env');
+if (file_exists(__DIR__ . '/.env')) {
+    loadLocalEnv(__DIR__ . '/.env');
+}
 
-// Carpeta donde Lensware escribe los CSV (solo lectura desde PHP)
-define('REPORTS_FOLDER', getenv('REPORTS_FOLDER') ?: '\\\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS');
+// ─────────────────────────────────────────────────────
+// CONFIGURACIÓN PARA RAILWAY (Linux)
+// ─────────────────────────────────────────────────────
+if ($isRailway) {
+    // En Railway: usar carpetas dentro del contenedor
+    $dataPath = '/var/www/html/data';
+    
+    define('REPORTS_FOLDER', $dataPath . '/reports');
+    define('WATCH_FOLDER', $dataPath . '/reports');
+    define('STAGING_FOLDER', $dataPath . '/staging');
+    define('BACKUP_FOLDER', $dataPath . '/backups');
+    define('CACHE_FILE', $dataPath . '/cache.json');
+    
+    // Crear carpetas automáticamente
+    foreach ([$dataPath, $dataPath . '/reports', $dataPath . '/staging', $dataPath . '/backups'] as $dir) {
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+    }
+} 
+// ─────────────────────────────────────────────────────
+// CONFIGURACIÓN PARA WINDOWS LOCAL (XAMPP)
+// ─────────────────────────────────────────────────────
+else {
+    $reportsFolder = getenv('REPORTS_FOLDER') ?: '\\\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS';
+    define('REPORTS_FOLDER', $reportsFolder);
+    define('WATCH_FOLDER', getenv('WATCH_FOLDER') ?: REPORTS_FOLDER);
+    define('STAGING_FOLDER', getenv('STAGING_FOLDER') ?: __DIR__ . '/uploads');
+    define('BACKUP_FOLDER', getenv('BACKUP_FOLDER') ?: __DIR__ . '/backups');
+    define('CACHE_FILE', __DIR__ . '/cache/data.json');
+}
 
-// Carpeta vigilada = REPORTS por defecto
-define('WATCH_FOLDER', normalizeStoragePath(getenv('WATCH_FOLDER') ?: REPORTS_FOLDER));
-
-// Importaciones manuales desde el navegador (no escribir en el share de red)
-define('STAGING_FOLDER', normalizeStoragePath(getenv('STAGING_FOLDER') ?: __DIR__ . '/uploads'));
-
-$defaultBackupFolder = getenv('APP_ENV') === 'production'
-    ? '/var/www/html/backups'
-    : __DIR__ . '/backups';
-define('BACKUP_FOLDER', normalizeStoragePath(getenv('BACKUP_FOLDER') ?: $defaultBackupFolder));
-define('CSV_PREFIXES',  ['UNI_PROD_ALL_ACT_', 'UNI_PROD_SIMPLE_ACT_']);
-
-define('CACHE_FILE', __DIR__ . '/cache/data.json');
-define('CACHE_TTL',  (int)(getenv('CACHE_TTL') ?: 30));
-
+// ─────────────────────────────────────────────────────
+// CONFIGURACIÓN COMÚN (ambos entornos)
+// ─────────────────────────────────────────────────────
+define('CSV_PREFIXES', ['UNI_PROD_ALL_ACT_', 'UNI_PROD_SIMPLE_ACT_']);
+define('CACHE_TTL', (int)(getenv('CACHE_TTL') ?: 30));
 define('BACKUP_RANGE_MAX_DAYS', (int)(getenv('BACKUP_RANGE_MAX_DAYS') ?: 365));
-
-// Solo necesario si expones upload_csv a la red; en local puede quedar vacío
 define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: '');
+define('APP_ENV', $isRailway ? 'railway' : (getenv('APP_ENV') ?: 'local'));
 
-define('APP_ENV', getenv('APP_ENV') ?: 'local');
-
+// ─────────────────────────────────────────────────────
+// ETIQUETAS Y COLORES (sin cambios)
+// ─────────────────────────────────────────────────────
 $STATUS_LABELS = [
     'SBLK' => 'Bloqueo',
     'PREP' => 'Calculado',
@@ -61,12 +87,20 @@ $STATUS_COLORS = [
     'WHST' => '#94A3B8',
 ];
 
-foreach ([BACKUP_FOLDER, STAGING_FOLDER, __DIR__ . '/cache', __DIR__ . '/logs'] as $dir) {
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0777, true);
+// ─────────────────────────────────────────────────────
+// CREAR CARPETAS EN LOCAL (solo si no es Railway)
+// ─────────────────────────────────────────────────────
+if (!$isRailway) {
+    foreach ([BACKUP_FOLDER, STAGING_FOLDER, __DIR__ . '/cache', __DIR__ . '/logs'] as $dir) {
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
     }
 }
 
+// ─────────────────────────────────────────────────────
+// FUNCIONES AUXILIARES
+// ─────────────────────────────────────────────────────
 function loadLocalEnv(string $path): void
 {
     if (!is_file($path)) {
