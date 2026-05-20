@@ -17,23 +17,22 @@ if (file_exists(__DIR__ . '/.env')) {
 // CONFIGURACIÓN PARA RAILWAY (Linux)
 // ─────────────────────────────────────────────────────
 if ($isRailway) {
-    // En Railway: usar carpetas dentro del contenedor
     $dataPath = '/var/www/html/data';
     
-    define('REPORTS_FOLDER', $dataPath . '/reports');
-    define('WATCH_FOLDER', $dataPath . '/staging');
-    define('STAGING_FOLDER', $dataPath . '/staging');
+    // UNIFICADO: todo usa staging
+    define('WATCH_FOLDER', $dataPath . '/staging');     // ← Busca aquí
+    define('STAGING_FOLDER', $dataPath . '/staging');   // ← Sube aquí
     define('BACKUP_FOLDER', $dataPath . '/backups');
-    define('CACHE_FILE', $dataPath . '/cache.json');
-    define('BACKUP_INDEX_FILE', $dataPath . '/backup_index.json');
+    define('CACHE_FILE', $dataPath . '/staging/cache.json');
+    define('BACKUP_INDEX_FILE', $dataPath . '/backups/backup_index.json');
     
-    // Crear carpetas automáticamente
-    foreach ([$dataPath, $dataPath . '/reports', $dataPath . '/staging', $dataPath . '/backups'] as $dir) {
+    // Crear carpetas
+    foreach ([$dataPath, $dataPath . '/staging', $dataPath . '/backups'] as $dir) {
         if (!is_dir($dir)) {
             mkdir($dir, 0777, true);
         }
     }
-} 
+}
 // ─────────────────────────────────────────────────────
 // CONFIGURACIÓN PARA WINDOWS LOCAL (XAMPP)
 // ─────────────────────────────────────────────────────
