@@ -17,19 +17,33 @@ if (file_exists(__DIR__ . '/.env')) {
 // CONFIGURACIÓN PARA RAILWAY (Linux)
 // ─────────────────────────────────────────────────────
 if ($isRailway) {
-    $dataPath = '/var/www/html/data';
-    
-    // UNIFICADO: todo usa staging
-    define('WATCH_FOLDER', $dataPath . '/staging');     // ← Busca aquí
-    define('STAGING_FOLDER', $dataPath . '/staging');   // ← Sube aquí
+
+    // Railway: usar filesystem temporal escribible
+    $dataPath = sys_get_temp_dir() . '/lensware';
+
+    define('WATCH_FOLDER', $dataPath . '/staging');
+    define('STAGING_FOLDER', $dataPath . '/staging');
     define('BACKUP_FOLDER', $dataPath . '/backups');
-    define('CACHE_FILE', $dataPath . '/staging/cache.json');
-    define('BACKUP_INDEX_FILE', $dataPath . '/backups/backup_index.json');
-    
-    // Crear carpetas
-    foreach ([$dataPath, $dataPath . '/staging', $dataPath . '/backups'] as $dir) {
+
+    define('CACHE_FILE', $dataPath . '/cache/cache.json');
+
+    define(
+        'BACKUP_INDEX_FILE',
+        $dataPath . '/backups/backup_index.json'
+    );
+
+    // Crear carpetas necesarias
+    $dirs = [
+        $dataPath,
+        $dataPath . '/staging',
+        $dataPath . '/backups',
+        $dataPath . '/cache',
+        $dataPath . '/logs'
+    ];
+
+    foreach ($dirs as $dir) {
         if (!is_dir($dir)) {
-            mkdir($dir, 0777, true);
+            @mkdir($dir, 0777, true);
         }
     }
 }
