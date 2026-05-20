@@ -377,33 +377,62 @@ try {
             if (!$validPrefix || strtolower(pathinfo($origName, PATHINFO_EXTENSION)) !== 'csv') {
                 respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
             }
-            $dest = STAGING_FOLDER . DIRECTORY_SEPARATOR . $origName;
-            if (file_exists($dest)) {
-                backupCSV($dest);
-            }
-            if (!move_uploaded_file($file['tmp_name'], $dest)) {
-                respondJson(['success' => false, 'error' => 'Error al guardar archivo'], 500);
-            }
-            $backupSync = ensureCSVBackups($dest);
-            $payload = buildLiveDataPayload($dest);
-            $cached  = $payload && saveCache($payload);
-            logMessage("CSV importado manualmente: $origName" . ($cached ? ' (caché actualizada)' : ''));
-            $msg = "CSV importado: $origName";
-            if (!empty($backupSync['dates'])) {
-                $msg .= ' · Respaldos: ' . count($backupSync['dates']) . ' día(s)';
-                if (!empty($backupSync['replaced'])) {
-                    $msg .= ' (' . count($backupSync['replaced']) . ' reemplazado(s))';
-                }
-            }
-            respondJson([
-                'success'     => true,
-                'message'     => $msg,
-                'cached'      => $cached,
-                'records'     => $cached ? count($payload['records']) : 0,
-                'backup_sync' => $backupSync,
-            ]);
-            break;
+$tempDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'lensware_uploads';
 
+if (!is_dir($tempDir)) {
+    mkdir($tempDir, 0777, true);
+}
+
+$dest = $tempDir . DIRECTORY_SEPARATOR . $origName;
+
+if (file_exists($dest)) {
+    @unlink($dest);
+}
+
+if (!move_uploaded_file($file['tmp_name'], $dest)) {
+    respondJson([
+        'success'   => false,
+        'error'     => 'Error al guardar archivo temporal',
+        'tmp_name'  => $file['tmp_name'],
+        'dest'      => $dest,
+        'tmp_exists'=> file_exists($file['tmp_name']),
+        'temp_dir'  => sys_get_temp_dir(),
+        'writable'  => is_writable($tempDir)
+    ], 500);
+}
+
+$backupSync = ensureCSVBackups($dest);
+
+$payload = buildLiveDataPayload($dest);
+
+$cached = $payload && saveCache($payload);
+
+logMessage(
+    "CSV importado manualmente: $origName" .
+    ($cached ? ' (caché actualizada)' : '')
+);
+
+$msg = "CSV importado: $origName";
+
+if (!empty($backupSync['dates'])) {
+    $msg .= ' · Respaldos: ' . count($backupSync['dates']) . ' día(s)';
+
+    if (!empty($backupSync['replaced'])) {
+        $msg .= ' (' . count($backupSync['replaced']) . ' reemplazado(s))';
+    }
+}
+
+respondJson([
+    'success'     => true,
+    'message'     => $msg,
+    'cached'      => $cached,
+    'records'     => $cached ? count($payload['records']) : 0,
+    'backup_sync' => $backupSync,
+    'upload_path' => $dest
+]);
+
+break;
+        
         case 'export':
             $cache = readCache();
             if (!$cache || empty($cache['records'])) {
