@@ -1,5 +1,5 @@
 <?php
-// api.php - API REST Lensware Pro (XAMPP local)
+// api.php - API REST Lensware Pro (Compatibilidad total con Railway)
 
 ob_start();
 
@@ -53,105 +53,168 @@ $action = $_GET['action'] ?? '';
 try {
     switch ($action) {
 
-case 'status':
-    // Valores por defecto para Railway (sin archivos reales)
-    $latestCSV = null;
-    $cache = null;
-    
-    try {
-        $latestCSV = findLatestDataSource();
-    } catch (Throwable $e) {
-        // Si falla, simplemente no hay CSV
-    }
-    
-    try {
-        $cache = readCache();
-    } catch (Throwable $e) {
-        // Si no existe caché, seguir
-    }
-    
-    respondJson([
-        'success' => true,
-        'data'    => [
-            'monitor_active'      => ($latestCSV !== null),
-            'reports_accessible'  => false, // En Railway no hay carpeta de red
-            'watch_folder'        => WATCH_FOLDER,
-            'staging_folder'      => STAGING_FOLDER,
-            'backup_folder'       => BACKUP_FOLDER,
-            'latest_file'         => $latestCSV ? basename($latestCSV) : null,
-            'latest_modified'     => $latestCSV ? date('Y-m-d H:i:s', @filemtime($latestCSV) ?: time()) : null,
-            'cache_records'       => $cache ? count($cache['records'] ?? []) : 0,
-            'cache_age_seconds'   => 0,
-            'environment'         => APP_ENV,
-        ],
-    ]);
-    break;
-        case 'sync':
-            $result = syncLiveData(true);
-            if (!$result['success']) {
-                respondJson(['success' => false, 'error' => $result['error']], 200);
+        case 'status':
+            $latestCSV = null;
+            $cache = null;
+            
+            try {
+                $latestCSV = findLatestDataSource();
+            } catch (Throwable $e) {
+                // Silencioso: no hay CSV
             }
-            respondJson(['success' => true, 'data' => $result]);
+            
+            try {
+                $cache = readCache();
+            } catch (Throwable $e) {
+                // Silencioso: no hay caché
+            }
+            
+            respondJson([
+                'success' => true,
+                'data'    => [
+                    'monitor_active'      => ($latestCSV !== null),
+                    'reports_accessible'  => false,
+                    'watch_folder'        => WATCH_FOLDER,
+                    'staging_folder'      => STAGING_FOLDER,
+                    'backup_folder'       => BACKUP_FOLDER,
+                    'latest_file'         => $latestCSV ? basename($latestCSV) : null,
+                    'latest_modified'     => $latestCSV ? date('Y-m-d H:i:s', @filemtime($latestCSV) ?: time()) : null,
+                    'cache_records'       => $cache ? count($cache['records'] ?? []) : 0,
+                    'cache_age_seconds'   => 0,
+                    'environment'         => APP_ENV,
+                ],
+            ]);
+            break;
+
+        case 'sync':
+            try {
+                $result = syncLiveData(true);
+                if (!$result['success']) {
+                    respondJson(['success' => false, 'error' => $result['error']], 200);
+                }
+                respondJson(['success' => true, 'data' => $result]);
+            } catch (Throwable $e) {
+                respondJson(['success' => false, 'error' => $e->getMessage()], 200);
+            }
             break;
 
         case 'data':
-            $latest     = findLatestDataSource();
-            $cache      = readCache();
-            $needsSync  = !$cache || empty($cache['records']);
-
-            if ($latest && !$needsSync && file_exists(CACHE_FILE)) {
-                $sourceMtime = @filemtime($latest) ?: 0;
-                $cacheMtime  = filemtime(CACHE_FILE);
-                if ($sourceMtime > $cacheMtime) {
-                    $needsSync = true;
+            try {
+                $latest = null;
+                $cache = null;
+                
+                try {
+                    $latest = findLatestDataSource();
+                } catch (Throwable $e) {
+                    // No hay CSV
                 }
-            }
+                
+                try {
+                    $cache = readCache();
+                } catch (Throwable $e) {
+                    // No hay caché
+                }
+                
+                $needsSync = !$cache || empty($cache['records']);
 
-            if (!$needsSync && (time() - filemtime(CACHE_FILE)) <= CACHE_TTL) {
-                respondJson(['success' => true, 'data' => $cache]);
-            }
-
-            if ($latest) {
-                $sync = syncLiveData(false);
-                if ($sync['success']) {
-                    $fresh = readCache();
-                    if ($fresh) {
-                        respondJson(['success' => true, 'data' => $fresh]);
+                if ($latest && !$needsSync && file_exists(CACHE_FILE)) {
+                    $sourceMtime = @filemtime($latest) ?: 0;
+                    $cacheMtime = filemtime(CACHE_FILE);
+                    if ($sourceMtime > $cacheMtime) {
+                        $needsSync = true;
                     }
                 }
-            }
 
-            if ($cache && !empty($cache['records'])) {
-                respondJson(['success' => true, 'data' => $cache]);
-            }
+                if (!$needsSync && file_exists(CACHE_FILE) && (time() - filemtime(CACHE_FILE)) <= CACHE_TTL) {
+                    respondJson(['success' => true, 'data' => $cache]);
+                }
 
-            respondJson([
-                'success' => false,
-                'error'   => 'No hay datos disponibles.',
-                'hint'    => isWatchFolderAccessible()
-                    ? 'Esperando CSV en REPORTS (UNI_PROD_*.csv).'
-                    : 'No se puede leer REPORTS. Verifica red y permisos: ' . WATCH_FOLDER,
-            ], 200);
+                if ($latest) {
+                    $sync = syncLiveData(false);
+                    if ($sync['success']) {
+                        $fresh = readCache();
+                        if ($fresh) {
+                            respondJson(['success' => true, 'data' => $fresh]);
+                        }
+                    }
+                }
+
+                if ($cache && !empty($cache['records'])) {
+                    respondJson(['success' => true, 'data' => $cache]);
+                }
+
+                // ✅ Respuesta por defecto para Railway (sin datos)
+                $emptyStats = [
+                    'total' => 0,
+                    'jobs_unicos' => 0,
+                    'brea_tasa' => 0,
+                    'por_status' => [],
+                    'por_hora' => array_fill(0, 24, 0),
+                    'por_device' => [],
+                    'usuarios' => 0,
+                    'dispositivos' => 0,
+                    'total_lentes_brea' => 0,
+                    'jobs_con_brea' => 0,
+                    'jobs_unicos_afectados' => 0,
+                    'brea_causa' => [],
+                    'top_jobs_brea' => [],
+                ];
+                
+                respondJson([
+                    'success' => true,
+                    'data' => [
+                        'records' => [],
+                        'stats' => $emptyStats,
+                        'breakages' => [],
+                        'device_stats' => [],
+                        'filename' => null,
+                        'data_source' => 'none',
+                        'backup_folder' => BACKUP_FOLDER,
+                    ],
+                    'meta' => ['hint' => 'Sin datos. Sube un CSV via upload_csv o agrega archivos en /data/reports']
+                ]);
+            } catch (Throwable $e) {
+                $emptyStats = [
+                    'total' => 0,
+                    'jobs_unicos' => 0,
+                    'brea_tasa' => 0,
+                    'por_status' => [],
+                    'por_hora' => array_fill(0, 24, 0),
+                    'por_device' => [],
+                    'usuarios' => 0,
+                    'dispositivos' => 0,
+                ];
+                respondJson([
+                    'success' => true,
+                    'data' => [
+                        'records' => [],
+                        'stats' => $emptyStats,
+                        'breakages' => [],
+                        'device_stats' => [],
+                        'filename' => null,
+                    ],
+                    'warning' => $e->getMessage()
+                ]);
+            }
             break;
 
-case 'refresh':
-    try {
-        $result = syncLiveData(true);
-        respondJson([
-            'success' => $result['success'] ?? false,
-            'message' => ($result['success'] ?? false) ? 'Datos actualizados desde REPORTS' : ($result['error'] ?? 'No hay datos para sincronizar'),
-            'data'    => $result ?? null,
-        ]);
-    } catch (Throwable $e) {
-        // En Railway no hay CSV reales → no es error, solo informativo
-        respondJson([
-            'success' => false,
-            'message' => 'Entorno Railway sin archivos CSV. Sube datos vía upload_csv.',
-            'data'    => null,
-        ]);
-    }
-    break;
-        
+        case 'refresh':
+            try {
+                $result = syncLiveData(true);
+                respondJson([
+                    'success' => $result['success'] ?? false,
+                    'message' => ($result['success'] ?? false) ? 'Datos actualizados desde REPORTS' : ($result['error'] ?? 'No hay datos para sincronizar'),
+                    'data'    => $result ?? null,
+                ]);
+            } catch (Throwable $e) {
+                respondJson([
+                    'success' => false,
+                    'message' => 'Entorno sin archivos CSV. Sube datos vía upload_csv.',
+                    'data'    => null,
+                ]);
+            }
+            break;
+
         case 'device':
             $deviceName = trim($_GET['name'] ?? '');
             if ($deviceName === '') {
@@ -159,38 +222,46 @@ case 'refresh':
             }
             $cache = readCache();
             if (!$cache || empty($cache['records'])) {
-                respondJson(['success' => false, 'error' => 'No hay datos']);
+                respondJson(['success' => false, 'error' => 'No hay datos'], 200);
             }
             respondJson(['success' => true, 'details' => getDeviceDetails($cache['records'], $deviceName)]);
             break;
 
         case 'backups':
-            respondJson(['success' => true, 'backups' => listBackups()]);
+            try {
+                $backups = listBackups();
+                respondJson(['success' => true, 'backups' => $backups]);
+            } catch (Throwable $e) {
+                respondJson(['success' => true, 'backups' => []]);
+            }
             break;
 
-case 'backups_by_date':
-    try {
-        $index = loadBackupIndex();
-        if (empty($index['files'])) {
-            respondJson(['success' => true, 'data' => []]); // ← Sin backups, respuesta vacía
-        }
-        rebuildBackupIndex();
-        respondJson(['success' => true, 'data' => buildBackupsByDateForApi()]);
-    } catch (Throwable $e) {
-        // Si falla por carpetas vacías o permisos, devuelve vacío en vez de 500
-        respondJson(['success' => true, 'data' => []]);
-    }
-    break;
+        case 'backups_by_date':
+            try {
+                $index = loadBackupIndex();
+                if (empty($index['files'])) {
+                    respondJson(['success' => true, 'data' => []]);
+                }
+                rebuildBackupIndex();
+                respondJson(['success' => true, 'data' => buildBackupsByDateForApi()]);
+            } catch (Throwable $e) {
+                respondJson(['success' => true, 'data' => []]);
+            }
+            break;
 
         case 'hist_live':
             $dateFilter = trim($_GET['date'] ?? appTodayDate());
             $hourFrom   = trim($_GET['hour_from'] ?? '');
             $hourTo     = trim($_GET['hour_to'] ?? '');
-            $payload    = buildHistLivePayload($dateFilter, $hourFrom, $hourTo);
-            if (!$payload) {
-                respondJson(['success' => false, 'error' => 'Sin registros en vivo para ' . $dateFilter], 404);
+            try {
+                $payload = buildHistLivePayload($dateFilter, $hourFrom, $hourTo);
+                if (!$payload) {
+                    respondJson(['success' => true, 'data' => ['records' => [], 'stats' => []]], 200);
+                }
+                respondJson(['success' => true, 'data' => $payload]);
+            } catch (Throwable $e) {
+                respondJson(['success' => true, 'data' => ['records' => [], 'stats' => []]]);
             }
-            respondJson(['success' => true, 'data' => $payload]);
             break;
 
         case 'backup_data':
@@ -247,7 +318,6 @@ case 'backups_by_date':
             break;
 
         case 'backup_range':
-            // OPTIMIZADO: Aumento de memoria y tiempo para rangos grandes
             ini_set('memory_limit', '1024M');
             ini_set('max_execution_time', 600);
             
@@ -337,7 +407,7 @@ case 'backups_by_date':
         case 'export':
             $cache = readCache();
             if (!$cache || empty($cache['records'])) {
-                respondJson(['success' => false, 'error' => 'No hay datos']);
+                respondJson(['success' => false, 'error' => 'No hay datos'], 200);
             }
             $type     = $_GET['type'] ?? 'activity';
             $filename = 'lensware_export_' . date('Ymd_His') . '.csv';
@@ -385,7 +455,6 @@ case 'backups_by_date':
             break;
 
         case 'cleanup_backups':
-            // Requiere la misma clave que upload_csv para proteger la operación.
             $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_GET['secret'] ?? '';
             if (UPLOAD_SECRET !== 'changeme' && $secret !== UPLOAD_SECRET) {
                 respondJson(['success' => false, 'error' => 'No autorizado'], 403);
