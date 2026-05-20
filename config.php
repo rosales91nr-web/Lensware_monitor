@@ -25,6 +25,7 @@ if ($isRailway) {
     define('STAGING_FOLDER', $dataPath . '/staging');
     define('BACKUP_FOLDER', $dataPath . '/backups');
     define('CACHE_FILE', $dataPath . '/cache.json');
+    define('BACKUP_INDEX_FILE', $dataPath . '/backup_index.json');
     
     // Crear carpetas automáticamente
     foreach ([$dataPath, $dataPath . '/reports', $dataPath . '/staging', $dataPath . '/backups'] as $dir) {
