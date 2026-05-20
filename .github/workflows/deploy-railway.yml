@@ -8,13 +8,14 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # 👇 Cambio 1: Usar el contenedor Docker en lugar de la acción
+    container: ghcr.io/railwayapp/cli:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 👇 Cambio 2: Ejecutar el comando railway directamente
       - name: Deploy to Railway
-        uses: railwayapp/railway-action@v2
-        with:
-          railwayToken: ${{ secrets.RAILWAY_TOKEN }}
-          projectId: ${{ secrets.RAILWAY_PROJECT_ID }}
-          environment: production
+        run: railway up --service=${{ secrets.RAILWAY_SERVICE_ID }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
