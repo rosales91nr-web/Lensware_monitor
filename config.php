@@ -21,7 +21,7 @@ if ($isRailway) {
     $dataPath = '/var/www/html/data';
     
     define('REPORTS_FOLDER', $dataPath . '/reports');
-    define('WATCH_FOLDER', $dataPath . '/reports');
+    define('WATCH_FOLDER', $dataPath . '/staging');
     define('STAGING_FOLDER', $dataPath . '/staging');
     define('BACKUP_FOLDER', $dataPath . '/backups');
     define('CACHE_FILE', $dataPath . '/cache.json');
