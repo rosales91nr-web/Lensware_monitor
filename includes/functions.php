@@ -1128,8 +1128,6 @@ function cleanupOldBackups(): array {
 // FUNCIONES DE ÍNDICE DE BACKUPS PARA EL MÓDULO HISTÓRICO
 // =============================================================================
 
-define('BACKUP_INDEX_FILE', dirname(__DIR__) . '/data/backup_index.json');
-
 /**
  * Reconstruye el índice de backups escaneando la carpeta BACKUP_FOLDER
  */
