@@ -53,26 +53,39 @@ $action = $_GET['action'] ?? '';
 try {
     switch ($action) {
 
-        case 'status':
-            $latestCSV = findLatestDataSource();
-            $cache     = readCache();
-            respondJson([
-                'success' => true,
-                'data'    => [
-                    'monitor_active'      => isWatchFolderAccessible() || ($latestCSV !== null),
-                    'reports_accessible'  => isWatchFolderAccessible(),
-                    'watch_folder'        => WATCH_FOLDER,
-                    'staging_folder'      => STAGING_FOLDER,
-                    'backup_folder'       => BACKUP_FOLDER,
-                    'latest_file'         => $latestCSV ? basename($latestCSV) : null,
-                    'latest_modified'     => $latestCSV ? date('Y-m-d H:i:s', @filemtime($latestCSV) ?: time()) : null,
-                    'cache_records'       => $cache ? count($cache['records'] ?? []) : 0,
-                    'cache_age_seconds'   => file_exists(CACHE_FILE) ? (time() - filemtime(CACHE_FILE)) : null,
-                    'environment'         => APP_ENV,
-                ],
-            ]);
-            break;
-
+case 'status':
+    // Valores por defecto para Railway (sin archivos reales)
+    $latestCSV = null;
+    $cache = null;
+    
+    try {
+        $latestCSV = findLatestDataSource();
+    } catch (Throwable $e) {
+        // Si falla, simplemente no hay CSV
+    }
+    
+    try {
+        $cache = readCache();
+    } catch (Throwable $e) {
+        // Si no existe caché, seguir
+    }
+    
+    respondJson([
+        'success' => true,
+        'data'    => [
+            'monitor_active'      => ($latestCSV !== null),
+            'reports_accessible'  => false, // En Railway no hay carpeta de red
+            'watch_folder'        => WATCH_FOLDER,
+            'staging_folder'      => STAGING_FOLDER,
+            'backup_folder'       => BACKUP_FOLDER,
+            'latest_file'         => $latestCSV ? basename($latestCSV) : null,
+            'latest_modified'     => $latestCSV ? date('Y-m-d H:i:s', @filemtime($latestCSV) ?: time()) : null,
+            'cache_records'       => $cache ? count($cache['records'] ?? []) : 0,
+            'cache_age_seconds'   => 0,
+            'environment'         => APP_ENV,
+        ],
+    ]);
+    break;
         case 'sync':
             $result = syncLiveData(true);
             if (!$result['success']) {
@@ -121,15 +134,24 @@ try {
             ], 200);
             break;
 
-        case 'refresh':
-            $result = syncLiveData(true);
-            respondJson([
-                'success' => $result['success'],
-                'message' => $result['success'] ? 'Datos actualizados desde REPORTS' : ($result['error'] ?? 'Error'),
-                'data'    => $result,
-            ]);
-            break;
-
+case 'refresh':
+    try {
+        $result = syncLiveData(true);
+        respondJson([
+            'success' => $result['success'] ?? false,
+            'message' => ($result['success'] ?? false) ? 'Datos actualizados desde REPORTS' : ($result['error'] ?? 'No hay datos para sincronizar'),
+            'data'    => $result ?? null,
+        ]);
+    } catch (Throwable $e) {
+        // En Railway no hay CSV reales → no es error, solo informativo
+        respondJson([
+            'success' => false,
+            'message' => 'Entorno Railway sin archivos CSV. Sube datos vía upload_csv.',
+            'data'    => null,
+        ]);
+    }
+    break;
+        
         case 'device':
             $deviceName = trim($_GET['name'] ?? '');
             if ($deviceName === '') {
@@ -146,12 +168,19 @@ try {
             respondJson(['success' => true, 'backups' => listBackups()]);
             break;
 
-        case 'backups_by_date':
-            if (empty(loadBackupIndex()['files'])) {
-                rebuildBackupIndex();
-            }
-            respondJson(['success' => true, 'data' => buildBackupsByDateForApi()]);
-            break;
+case 'backups_by_date':
+    try {
+        $index = loadBackupIndex();
+        if (empty($index['files'])) {
+            respondJson(['success' => true, 'data' => []]); // ← Sin backups, respuesta vacía
+        }
+        rebuildBackupIndex();
+        respondJson(['success' => true, 'data' => buildBackupsByDateForApi()]);
+    } catch (Throwable $e) {
+        // Si falla por carpetas vacías o permisos, devuelve vacío en vez de 500
+        respondJson(['success' => true, 'data' => []]);
+    }
+    break;
 
         case 'hist_live':
             $dateFilter = trim($_GET['date'] ?? appTodayDate());
