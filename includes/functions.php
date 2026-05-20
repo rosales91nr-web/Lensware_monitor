@@ -1082,6 +1082,12 @@ function searchJobHistory(string $jobQuery): array {
 // FUNCIONES DE LIMPIEZA Y LOGGING
 // =============================================================================
 
+/**
+ * @deprecated Usar cleanupBackupsOnePerDay() de cleanup.php.
+ *             Esta versión solo elimina backups intermedios (no-_2359_),
+ *             pero no garantiza 1 backup por día si hay múltiples _2359_.
+ *             Se mantiene por compatibilidad con código existente.
+ */
 function cleanupOldBackups(): array {
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) return ['deleted' => 0, 'kept' => 0, 'files_deleted' => []];

@@ -255,6 +255,21 @@ try {
             }
             respondJson(['success' => true, 'data' => $result]);
 
+        case 'cleanup_backups':
+            // Requiere la misma clave que upload_csv para proteger la operación.
+            $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_GET['secret'] ?? '';
+            if (UPLOAD_SECRET !== 'changeme' && $secret !== UPLOAD_SECRET) {
+                respondJson(['success' => false, 'error' => 'No autorizado'], 403);
+            }
+            require_once __DIR__ . '/cleanup.php';
+            $dryRun = ($_GET['dry_run'] ?? '0') === '1';
+            $result = cleanupBackupsOnePerDay($dryRun);
+            logMessage(
+                "cleanup_backups: {$result['deleted']} eliminados, {$result['kept']} conservados, {$result['freed_mb']} MB liberados" .
+                ($dryRun ? ' [DRY-RUN]' : '')
+            );
+            respondJson(['success' => true, 'data' => $result]);
+
         default:
             respondJson(['success' => false, 'error' => 'Acción no válida'], 400);
     }
