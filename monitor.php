@@ -1,42 +1,50 @@
 <?php
-// monitor.php - Script de monitoreo (Railway: usa uploads/ local)
+// monitor.php — Sincroniza CSV desde REPORTS y actualiza caché (ejecutar cada 1-5 min)
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/functions.php';
 
 echo "Lensware Pro Monitor - " . date('Y-m-d H:i:s') . "\n";
-echo "==========================================\n";
+echo str_repeat('=', 50) . "\n";
+echo "REPORTS: " . WATCH_FOLDER . "\n";
+echo "Accesible: " . (isWatchFolderAccessible() ? 'SI' : 'NO') . "\n\n";
 
-$latestCSV = findLatestCSV();
+if (empty(loadBackupIndex()['files'])) {
+    $indexed = rebuildBackupIndex();
+    echo "Indice de backups: $indexed archivo(s) indexados.\n";
+}
 
-if (!$latestCSV) {
-    echo "No se encontraron archivos CSV en: " . WATCH_FOLDER . "\n";
-    echo "Sube un CSV via POST /api.php?action=upload_csv\n";
+$daily = finalizeDailyBackups();
+if ($daily !== []) {
+    echo "Respaldos diarios: " . implode(', ', $daily) . "\n";
+}
+
+$result = syncLiveData(false);
+
+if (!empty($result['backup_sync']['dates'])) {
+    echo "Respaldos por fecha: " . implode(', ', $result['backup_sync']['dates']) . "\n";
+    if (!empty($result['backup_sync']['created'])) {
+        echo "  Nuevos: " . implode(', ', $result['backup_sync']['created']) . "\n";
+    }
+    if (!empty($result['backup_sync']['replaced'])) {
+        echo "  Reemplazados: " . implode(', ', $result['backup_sync']['replaced']) . "\n";
+    }
+}
+
+if (!$result['success']) {
+    echo "ERROR: " . $result['error'] . "\n";
     exit(1);
 }
 
-echo "Archivo encontrado: " . basename($latestCSV) . "\n";
-echo "Fecha modificación: " . date('Y-m-d H:i:s', filemtime($latestCSV)) . "\n";
+echo "Archivo: " . $result['source_file'] . "\n";
+echo "Origen:  " . $result['data_source'] . "\n";
+echo "Modificado: " . $result['modified'] . "\n";
+echo "Registros: " . $result['records'] . "\n";
 
-$now = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
-$lastBackup = getLastCSVBackup($latestCSV);
-if (!$lastBackup || filemtime($latestCSV) > filemtime($lastBackup)) {
-    echo "Creando respaldo por actualización...\n";
-    backupCSV($latestCSV);
-} else {
-    echo "No hay cambios nuevos desde el último respaldo.\n";
+$cleanup = cleanupOldBackups(7);
+if ($cleanup['deleted'] > 0) {
+    echo "Limpieza: {$cleanup['deleted']} respaldo(s) intermedio(s) antiguo(s) eliminados.\n";
 }
 
-// Respaldo diario antes de cambiar de día (23:55 - 23:59 hora Costa Rica)
-if ($now->format('Hi') >= '2355' && $now->format('Hi') <= '2359' && !hasDailyCSVBackup($latestCSV, $now)) {
-    echo "Creando respaldo diario 23:59...\n";
-    backupCSV($latestCSV, $now->format('Ymd_2359'));
-}
-
-// Limpiar caché para forzar recarga
-if (file_exists(CACHE_FILE)) {
-    unlink(CACHE_FILE);
-    echo "Caché limpiado.\n";
-}
-
-echo "Monitor ejecutado correctamente.\n";
+echo "\nMonitor ejecutado correctamente.\n";
+exit(0);

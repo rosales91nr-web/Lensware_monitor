@@ -75,6 +75,7 @@ let searchState = {
 // ─────────────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     loadData();
+    checkSystemStatus();
     setupEventListeners();
     startAutoRefresh();
     loadHistBackupDays();      // cargar días disponibles en paralelo
@@ -252,12 +253,13 @@ async function loadData() {
             appData.lastUpdate = new Date();
             updateUI();
             updateStatus(true);
-            const src = appData.data_source === 'backup' ? ' (desde respaldo)' : '';
+            const srcLabels = { reports: ' (REPORTS en vivo)', staging: ' (importado)', backup: ' (respaldo)' };
+            const src = srcLabels[appData.data_source] || '';
             document.getElementById('file-info').textContent = `📄 Archivo: ${appData.filename}${src}`;
             document.getElementById('last-update').textContent = formatTime(new Date());
             document.getElementById('backup-folder').textContent = `Carpeta de respaldos: ${appData.backup_folder || 'desconocida'}`;
         } else {
-            const msg = result.error || result.hint || 'Esperando CSV del monitor de Windows...';
+            const msg = result.hint || result.error || 'Esperando CSV en REPORTS...';
             updateStatus(false, msg);
             document.getElementById('file-info').textContent = msg;
         }
@@ -1354,7 +1356,7 @@ function updateHistLoadButton() {
     if (histState.mode === 'range') {
         btn.disabled = !(histState.dateFrom && histState.dateTo);
     } else {
-        btn.disabled = !histState.selectedFile;
+        btn.disabled = !(histState.selectedDate && histState.selectedFile);
     }
 }
 
@@ -1395,7 +1397,7 @@ function renderHistDayChips() {
     picker.innerHTML = histState.backupsByDate.map(dayObj => {
         const isSelected = dayObj.date === histState.selectedDate;
         const isToday    = dayObj.is_today;
-        const hasDaily   = dayObj.all?.some(b => b.filename?.includes('_2359_'));
+        const hasDaily   = dayObj.has_daily || dayObj.all?.some(b => b.is_daily || b.filename?.includes('_2359_'));
         return `<span
             class="day-chip ${isToday?'today':''} ${isSelected?'selected':''} ${hasDaily&&!isToday?'daily':''}"
             data-date="${escapeAttr(dayObj.date)}"
@@ -1418,21 +1420,24 @@ function selectHistDay(date) {
     select.innerHTML = '';
 
     if (dayObj.is_today) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = `— ${dayObj.all.length} backup(s) disponibles —`;
-        select.appendChild(opt);
+        const liveOpt = document.createElement('option');
+        liveOpt.value = '__live__';
+        liveOpt.textContent = '🟢 Datos en vivo (REPORTS actual)';
+        select.appendChild(liveOpt);
+
         dayObj.all.forEach(b => {
             const o = document.createElement('option');
             o.value = b.filename;
-            const hour = b.modified ? b.modified.substring(11,16) : '';
-            o.textContent = `${hour} — ${b.filename} (${formatFileSize(b.size)})`;
+            const hour = b.modified ? b.modified.substring(11, 16) : '';
+            const daily = b.is_daily || b.filename?.includes('_2359_');
+            o.textContent = daily
+                ? `⭐ Diario — ${formatFileSize(b.size)}`
+                : `🕐 ${hour} — ${formatFileSize(b.size)}`;
             select.appendChild(o);
         });
-        if (dayObj.all.length > 0) {
-            select.value = dayObj.all[0].filename;
-            histState.selectedFile = dayObj.all[0].filename;
-        }
+
+        select.value = '__live__';
+        histState.selectedFile = '__live__';
     } else {
         const opt = document.createElement('option');
         opt.value = '';
@@ -1471,22 +1476,20 @@ async function loadHistData() {
 }
 
 async function loadHistSingleDayData(hourFrom, hourTo) {
-    if (!histState.selectedFile) return;
+    if (!histState.selectedFile || !histState.selectedDate) return;
 
-    showHistStatus('loading', 'Cargando backup...');
+    showHistStatus('loading', histState.selectedFile === '__live__' ? 'Cargando datos en vivo...' : 'Cargando backup...');
     document.getElementById('btn-hist-load').disabled = true;
 
-    let url = `api.php?action=backup_data&file=${encodeURIComponent(histState.selectedFile)}`;
-    if (hourFrom !== '') url += `&hour_from=${encodeURIComponent(hourFrom)}`;
-    if (hourTo !== '') url += `&hour_to=${encodeURIComponent(hourTo)}`;
-
-    const backupDayMatch = histState.selectedFile?.match(/BACKUP_(\d{4})(\d{2})(\d{2})_/);
-    const backupDay = backupDayMatch
-        ? `${backupDayMatch[1]}-${backupDayMatch[2]}-${backupDayMatch[3]}`
-        : null;
-    if (histState.selectedDate && backupDay && backupDay !== histState.selectedDate) {
+    let url;
+    if (histState.selectedFile === '__live__') {
+        url = `api.php?action=hist_live&date=${encodeURIComponent(histState.selectedDate)}`;
+    } else {
+        url = `api.php?action=backup_data&file=${encodeURIComponent(histState.selectedFile)}`;
         url += `&date_filter=${encodeURIComponent(histState.selectedDate)}`;
     }
+    if (hourFrom !== '') url += `&hour_from=${encodeURIComponent(hourFrom)}`;
+    if (hourTo !== '') url += `&hour_to=${encodeURIComponent(hourTo)}`;
 
     try {
         const r = await fetch(url);
@@ -1509,7 +1512,10 @@ async function loadHistSingleDayData(hourFrom, hourTo) {
         const brea = breaMetrics(stats);
         showHistStatus('loaded', `✅ ${formatNumber(stats.total)} registros · ${formatNumber(stats.jobs_unicos)} jobs · ${formatNumber(brea.ordenesUnicas)} órdenes c/quiebra · ${formatNumber(brea.eventos)} eventos`);
         document.getElementById('hist-banner-title').textContent = `Visualizando: ${dayLabel}${rangeLabel}`;
-        document.getElementById('hist-banner-sub').textContent = `Archivo: ${histState.selectedFile}`;
+        const sub = histState.selectedFile === '__live__'
+            ? 'Fuente: REPORTS en tiempo real'
+            : `Archivo: ${histState.selectedFile}`;
+        document.getElementById('hist-banner-sub').textContent = sub;
         document.getElementById('hist-banner').classList.remove('hidden');
         renderHistContent(result.data);
         updateHistLoadButton();
@@ -1553,7 +1559,7 @@ async function loadHistRangeData(hourFrom, hourTo) {
         document.getElementById('hist-banner-title').textContent =
             `Rango: ${histState.dateFrom} → ${histState.dateTo}${hourLabel}`;
         document.getElementById('hist-banner-sub').textContent =
-            `${meta.days_with_data || 0} días con datos · ${formatNumber(stats.total)} registros · ${meta.files_loaded?.length || 0} fuentes`;
+            `${meta.days_with_data || 0} día(s) con datos · ${formatNumber(meta.total_records || meta.records_count || result.data.records?.length || 0)} registros · ${meta.files_loaded?.length || 0} fuente(s)`;
         document.getElementById('hist-banner').classList.remove('hidden');
         renderHistContent(result.data);
         updateHistLoadButton();
@@ -1898,6 +1904,20 @@ async function exportData(type) {
     }
 }
 
+async function checkSystemStatus() {
+    try {
+        const r = await fetch('api.php?action=status');
+        const j = await r.json();
+        if (!j.success) return;
+        const d = j.data;
+        const el = document.getElementById('reports-folder');
+        if (el) el.textContent = d.watch_folder || '—';
+        if (!d.reports_accessible && !d.latest_file) {
+            updateStatus(false, '🔴 REPORTS no accesible');
+        }
+    } catch (_) { /* silencioso */ }
+}
+
 function startAutoRefresh() {
     setInterval(() => refreshData(), 30000);
 }
@@ -1905,8 +1925,8 @@ function startAutoRefresh() {
 function updateStatus(online, error='') {
     const dot  = document.getElementById('status-dot');
     const text = document.getElementById('status-text');
-    if (online) { dot.className='fas fa-circle online'; text.textContent='🟢 Monitor activo'; }
-    else         { dot.className='fas fa-circle offline'; text.textContent=error||'🔴 Desconectado'; }
+    if (online) { dot.className='fas fa-circle online'; text.textContent='🟢 REPORTS conectado'; }
+    else         { dot.className='fas fa-circle offline'; text.textContent=error||'🔴 Sin datos'; }
 }
 
 function formatNumber(num) { return num?.toLocaleString()||'0'; }
