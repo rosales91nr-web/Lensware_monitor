@@ -80,11 +80,44 @@ El dashboard también actualiza solo al abrir la página y cada 30 segundos.
 | `cache/` | Caché JSON del dashboard |
 | `logs/` | Registro de la aplicación |
 
+## Despliegue en Railway desde GitHub
+
+Esta aplicación puede desplegarse en Railway usando el `Dockerfile` y el archivo `railway.toml` incluido.
+
+1. Crea un repositorio en GitHub y sube este proyecto.
+2. En Railway, crea un nuevo proyecto y conéctalo al repositorio de GitHub.
+3. Configura el despliegue para usar el `Dockerfile` existente.
+4. Ajusta las variables de entorno en Railway según sea necesario.
+
+Variables recomendadas:
+
+```env
+REPORTS_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
+WATCH_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
+STAGING_FOLDER=/var/www/html/uploads
+BACKUP_FOLDER=/var/www/html/backups
+CACHE_TTL=30
+BACKUP_RANGE_MAX_DAYS=93
+UPLOAD_SECRET=tu_clave_secreta
+APP_ENV=production
+```
+
+> Railway puede montar un volumen persistente en `/var/www/html/backups`. Si lo haces, la app guardará los backups ahí y los preservará entre despliegues.
+
+> Nota: Railway ejecuta la aplicación en la nube dentro de un contenedor. Esto significa que una carpeta de red Windows (`\\host\\share`) no será accesible desde Railway a menos que esté disponible públicamente o mediante un montaje compatible.
+
+Opciones en Railway:
+
+- Si no puedes conectar el share remoto, usa la pestaña **Importar CSV** para subir archivos manualmente.
+- Los directorios `cache/`, `backups/`, `logs/` y `uploads/` son temporales en el contenedor; si necesitas persistencia real, usa un almacenamiento externo.
+
+También se incluye un flujo de despliegue automático en `.github/workflows/deploy-railway.yml`.
+
 ## Configuración (.env)
 
 ```env
-REPORTS_FOLDER=\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS
-WATCH_FOLDER=\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS
+REPORTS_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
+WATCH_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
 CACHE_TTL=30
 ```
 

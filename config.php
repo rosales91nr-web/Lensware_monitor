@@ -15,18 +15,21 @@ define('WATCH_FOLDER', normalizeStoragePath(getenv('WATCH_FOLDER') ?: REPORTS_FO
 // Importaciones manuales desde el navegador (no escribir en el share de red)
 define('STAGING_FOLDER', normalizeStoragePath(getenv('STAGING_FOLDER') ?: __DIR__ . '/uploads'));
 
-define('BACKUP_FOLDER', normalizeStoragePath(getenv('BACKUP_FOLDER') ?: __DIR__ . '/backups'));
+$defaultBackupFolder = getenv('APP_ENV') === 'production'
+    ? '/var/www/html/backups'
+    : __DIR__ . '/backups';
+define('BACKUP_FOLDER', normalizeStoragePath(getenv('BACKUP_FOLDER') ?: $defaultBackupFolder));
 define('CSV_PREFIXES',  ['UNI_PROD_ALL_ACT_', 'UNI_PROD_SIMPLE_ACT_']);
 
 define('CACHE_FILE', __DIR__ . '/cache/data.json');
 define('CACHE_TTL',  (int)(getenv('CACHE_TTL') ?: 30));
 
-define('BACKUP_RANGE_MAX_DAYS', (int)(getenv('BACKUP_RANGE_MAX_DAYS') ?: 93));
+define('BACKUP_RANGE_MAX_DAYS', (int)(getenv('BACKUP_RANGE_MAX_DAYS') ?: 365));
 
 // Solo necesario si expones upload_csv a la red; en local puede quedar vacío
 define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: '');
 
-define('APP_ENV', 'local');
+define('APP_ENV', getenv('APP_ENV') ?: 'local');
 
 $STATUS_LABELS = [
     'SBLK' => 'Bloqueo',
