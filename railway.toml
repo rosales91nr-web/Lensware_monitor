@@ -4,6 +4,10 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "/usr/bin/supervisord -c /etc/supervisord.conf"
-healthcheckPath = "/health"  # 👈 CAMBIADO: antes era /api.php?action=status
+healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
+
+[env]
+APP_ENV = "railway"
+RAILWAY_ENVIRONMENT = "production"
