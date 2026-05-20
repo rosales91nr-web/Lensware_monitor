@@ -510,6 +510,30 @@ case 'setup_dirs':
     respondJson(['success' => true, 'directories' => $result]);
     break;
 
+        case 'debug_paths':
+    $result = [
+        'APP_BASE' => defined('APP_BASE') ? APP_BASE : 'no definido',
+        'CACHE_FILE' => defined('CACHE_FILE') ? CACHE_FILE : 'no definido',
+        'BACKUP_INDEX_FILE' => defined('BACKUP_INDEX_FILE') ? BACKUP_INDEX_FILE : 'no definido',
+        'BACKUP_STATE_FILE' => defined('BACKUP_STATE_FILE') ? BACKUP_STATE_FILE : 'no definido',
+        'LOG_FILE' => defined('LOG_FILE') ? LOG_FILE : 'no definido',
+        'WATCH_FOLDER' => defined('WATCH_FOLDER') ? WATCH_FOLDER : 'no definido',
+        'STAGING_FOLDER' => defined('STAGING_FOLDER') ? STAGING_FOLDER : 'no definido',
+        'BACKUP_FOLDER' => defined('BACKUP_FOLDER') ? BACKUP_FOLDER : 'no definido',
+        'temp_dir' => sys_get_temp_dir(),
+        'temp_writable' => is_writable(sys_get_temp_dir()),
+    ];
+    
+    // Verificar cada carpeta
+    foreach ([APP_BASE, BACKUP_FOLDER, dirname(CACHE_FILE), dirname(LOG_FILE)] as $dir) {
+        if (defined(strtoupper(str_replace('/', '_', $dir)))) continue;
+        $result['exists_' . str_replace('/', '_', $dir)] = is_dir($dir);
+        $result['writable_' . str_replace('/', '_', $dir)] = is_writable($dir);
+    }
+    
+    respondJson(['success' => true, 'paths' => $result]);
+    break;
+
         default:
             respondJson(['success' => false, 'error' => 'Acción no válida'], 400);
     }
