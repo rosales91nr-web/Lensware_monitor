@@ -1,131 +1,120 @@
-# Lensware Pro — Railway Deploy
+# Lensware Pro — XAMPP local
 
-Dashboard PHP para monitorear producción de Lensware, adaptado para ejecutarse en [Railway](https://railway.app).
+Dashboard de monitoreo de producción Lensware. Lee los CSV directamente desde la carpeta de red donde Lensware los genera.
 
----
-
-## Arquitectura
+## Carpeta de datos (REPORTS)
 
 ```
-Windows Server (Lensware)          Railway (contenedor Linux)
-┌─────────────────────────┐        ┌──────────────────────────┐
-│  REPORTS/*.csv          │        │  /uploads/*.csv          │
-│  push_csv.ps1 (cron)   │──POST──▶│  api.php?action=upload_csv│
-│  cada 5 min             │        │  → cache/data.json       │
-└─────────────────────────┘        │  → Dashboard (index.php) │
-                                   └──────────────────────────┘
+\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS
 ```
 
-> Railway es Linux y no puede acceder a rutas UNC de Windows (`\\servidor\share`).  
-> La solución es un script PowerShell en el servidor Windows que **empuja** el CSV via HTTP POST.
+Archivos esperados (prefijos):
 
----
+- `UNI_PROD_ALL_ACT_*.csv`
+- `UNI_PROD_SIMPLE_ACT_*.csv`
 
-## Deploy en Railway
+## Requisitos
 
-### 1. Subir a GitHub
+- Windows con acceso a la ruta UNC anterior
+- [XAMPP](https://www.apachefriends.org/) (PHP 8.x, Apache)
+- Extensión PHP `mbstring` activada
 
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/TU_USUARIO/lensware-pro.git
-git push -u origin main
+## Instalación rápida
+
+1. Copia el proyecto en `C:\xampp\htdocs\Lensware-pro`
+2. Renombra o verifica que exista `.htaccess` (ya incluido)
+3. Edita `.env` si la ruta REPORTS cambia en tu red
+4. Inicia **Apache** en el panel XAMPP
+5. Abre: **http://localhost/Lensware-pro/**
+
+## Permisos importantes
+
+Apache (usuario del servicio) debe poder **leer** la carpeta UNC REPORTS.
+
+Opciones:
+
+- Ejecutar Apache con una cuenta de Windows que tenga acceso al share
+- O mapear la unidad de red (ej. `Z:\`) y poner en `.env`:
+  ```
+  WATCH_FOLDER=Z:\REPORTS
+  ```
+
+Las carpetas locales `cache/`, `backups/`, `uploads/`, `logs/` deben ser **escribibles** por Apache.
+
+## Sincronización automática
+
+### Opción A — Tarea programada (recomendada)
+
+Ejecuta como administrador:
+
+```
+instalar_tarea_sync.bat
 ```
 
-### 2. Crear proyecto en Railway
+Esto crea la tarea **LenswarePro_Sync** que corre `sync_local.ps1` cada 2 minutos.
 
-1. Ir a [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
-2. Seleccionar el repo `lensware-pro`
-3. Railway detectará el `Dockerfile` automáticamente
+### Opción B — Monitor continuo
 
-### 3. Configurar variables de entorno
-
-En Railway → tu proyecto → **Variables**, añadir:
-
-| Variable        | Valor                          |
-|-----------------|-------------------------------|
-| `UPLOAD_SECRET` | (clave segura, mínimo 20 chars)|
-| `CACHE_TTL`     | `60`                          |
-
-### 4. Configurar el script Windows
-
-Editar `push_csv.ps1`:
+En PowerShell:
 
 ```powershell
-$RailwayUrl   = "https://TU-APP.up.railway.app/api.php?action=upload_csv"
-$UploadSecret = "la_misma_clave_que_en_railway"
-$WatchFolder  = "\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS"
+cd C:\xampp\htdocs\Lensware-pro
+.\monitor_local.ps1
 ```
 
-Crear tarea programada en Windows:
+### Opción C — Manual
+
+```bat
+C:\xampp\php\php.exe C:\xampp\htdocs\Lensware-pro\monitor.php
 ```
-Programa: powershell.exe
-Argumentos: -ExecutionPolicy Bypass -File "C:\ruta\push_csv.ps1"
-Frecuencia: cada 5 minutos
+
+El dashboard también actualiza solo al abrir la página y cada 30 segundos.
+
+## Estructura local
+
+| Carpeta | Uso |
+|---------|-----|
+| `\\172.16.8.32\...\REPORTS` | CSV en vivo (solo lectura) |
+| `uploads/` | Importaciones manuales desde el navegador |
+| `backups/` | Copias automáticas `BACKUP_*.csv` |
+| `cache/` | Caché JSON del dashboard |
+| `logs/` | Registro de la aplicación |
+
+## Configuración (.env)
+
+```env
+REPORTS_FOLDER=\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS
+WATCH_FOLDER=\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS
+CACHE_TTL=30
 ```
+
+## API local
+
+| Acción | URL |
+|--------|-----|
+| Datos en vivo | `api.php?action=data` |
+| Estado / REPORTS | `api.php?action=status` |
+| Forzar sync | `api.php?action=sync` |
+| Refrescar caché | `api.php?action=refresh` |
+
+## Solución de problemas
+
+**"REPORTS no accesible"**
+
+- Abre la ruta en el Explorador de Windows desde la misma PC donde corre XAMPP
+- Verifica credenciales del share
+- Prueba mapear unidad de red y actualizar `.env`
+
+**"No hay datos disponibles"**
+
+- Confirma que exista un CSV con prefijo válido en REPORTS
+- Ejecuta `php monitor.php` y revisa `logs/app.log`
+
+**Apache no lee UNC**
+
+- Usa `sync_local.ps1` en tarea programada con tu usuario de Windows (tiene acceso al share)
+- El script PHP corre con tu usuario y actualiza la caché local
 
 ---
 
-## Endpoints API
-
-| Endpoint | Descripción |
-|----------|-------------|
-| `GET /api.php?action=status` | Estado del servidor |
-| `GET /api.php?action=data` | Todos los registros (usa caché) |
-| `GET /api.php?action=refresh` | Forzar recarga del caché |
-| `GET /api.php?action=device&name=X` | Detalle de dispositivo |
-| `GET /api.php?action=backups` | Listar respaldos |
-| `GET /api.php?action=export&type=activity` | Exportar CSV actividad |
-| `GET /api.php?action=export&type=breakages` | Exportar CSV quiebras |
-| `POST /api.php?action=upload_csv` | Subir CSV desde Windows |
-
-### Subida de CSV (desde Windows)
-
-```
-POST /api.php?action=upload_csv
-Header: X-Upload-Secret: TU_UPLOAD_SECRET
-Body: multipart/form-data
-  csv_file: <archivo .csv>
-```
-
----
-
-## Estructura del proyecto
-
-```
-lensware-pro/
-├── Dockerfile
-├── railway.toml
-├── docker/
-│   ├── nginx.conf
-│   └── supervisord.conf
-├── config.php
-├── api.php
-├── index.php
-├── app.js
-├── styles.css
-├── includes/
-│   └── functions.php
-├── monitor.php
-├── push_csv.ps1          ← ejecutar en Windows
-├── .env.example
-└── .gitignore
-```
-
----
-
-## Notas importantes
-
-- **Persistencia**: Railway reinicia el contenedor y borra `uploads/`, `cache/`, `backups/`.  
-  Para persistir datos, añade uno o dos **Railway Volumes** montados en:  
-  - `/var/www/html/uploads` para los CSVs entrantes  
-  - `/var/www/html/backups` para los archivos de respaldo  
-  En Railway → tu servicio → **Volumes** → Add Volume → mount path: `/var/www/html/uploads`  
-  Repite para `/var/www/html/backups` o configura `BACKUP_FOLDER` si montas en otra ruta.  
-  
-  **Opción alterna:** la aplicación ahora crea sus propios backups dentro del volumen persistente cada vez que se procesa el CSV y también genera un respaldo diario antes de las 23:59 hora Costa Rica, sin depender del servicio de backups Pro de Railway.
-
-- **Logs**: disponibles en Railway → tu servicio → **Logs**
-
-- **PHP**: versión 8.2 con opcache habilitado
+Desarrollado por Nestor Rosales | Rosalesdev91

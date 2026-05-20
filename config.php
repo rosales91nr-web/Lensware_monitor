@@ -1,28 +1,33 @@
 <?php
-// config.php - Lensware Pro (Railway-ready)
+// config.php — Lensware Pro (XAMPP local / Windows)
 
-// ---------------------------------------------------------------------------
-// Rutas locales (Railway no puede acceder a shares UNC de Windows).
-// Sube CSVs a la carpeta /uploads/ vía el endpoint api.php?action=upload_csv
-// o montando un volumen en Railway con la ruta /var/www/html/uploads
-// ---------------------------------------------------------------------------
 date_default_timezone_set('America/Costa_Rica');
-define('WATCH_FOLDER',  getenv('WATCH_FOLDER') ?: __DIR__ . '/uploads');
-define('BACKUP_FOLDER', getenv('BACKUP_FOLDER') ?: __DIR__ . '/backups');
+
+// Cargar .env del proyecto (opcional)
+loadLocalEnv(__DIR__ . '/.env');
+
+// Carpeta donde Lensware escribe los CSV (solo lectura desde PHP)
+define('REPORTS_FOLDER', getenv('REPORTS_FOLDER') ?: '\\\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS');
+
+// Carpeta vigilada = REPORTS por defecto
+define('WATCH_FOLDER', normalizeStoragePath(getenv('WATCH_FOLDER') ?: REPORTS_FOLDER));
+
+// Importaciones manuales desde el navegador (no escribir en el share de red)
+define('STAGING_FOLDER', normalizeStoragePath(getenv('STAGING_FOLDER') ?: __DIR__ . '/uploads'));
+
+define('BACKUP_FOLDER', normalizeStoragePath(getenv('BACKUP_FOLDER') ?: __DIR__ . '/backups'));
 define('CSV_PREFIXES',  ['UNI_PROD_ALL_ACT_', 'UNI_PROD_SIMPLE_ACT_']);
 
-// Caché JSON
 define('CACHE_FILE', __DIR__ . '/cache/data.json');
-define('CACHE_TTL',  (int)(getenv('CACHE_TTL') ?: 60)); // segundos
+define('CACHE_TTL',  (int)(getenv('CACHE_TTL') ?: 30));
 
-// Máximo de días en consulta histórica por rango (semanas / meses)
 define('BACKUP_RANGE_MAX_DAYS', (int)(getenv('BACKUP_RANGE_MAX_DAYS') ?: 93));
 
-// Clave de API para el endpoint de subida de CSV (define en Railway → Variables)
-// Si no defines UPLOAD_SECRET en Railway Variables, el upload no requiere auth (uso interno).
-define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: 'changeme');
+// Solo necesario si expones upload_csv a la red; en local puede quedar vacío
+define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: '');
 
-// Mapeo de estados
+define('APP_ENV', 'local');
+
 $STATUS_LABELS = [
     'SBLK' => 'Bloqueo',
     'PREP' => 'Calculado',
@@ -35,7 +40,7 @@ $STATUS_LABELS = [
     'PKRX' => 'Validación RX',
     'WHRX' => 'Almacén Bases',
     'WHST' => 'Almacén Term.',
-    'BREA' => 'QUIEBRA'
+    'BREA' => 'QUIEBRA',
 ];
 
 $STATUS_COLORS = [
@@ -50,12 +55,50 @@ $STATUS_COLORS = [
     'PRNT' => '#14B8A6',
     'PKRX' => '#EC4899',
     'WHRX' => '#64748B',
-    'WHST' => '#94A3B8'
+    'WHST' => '#94A3B8',
 ];
 
-// Crear carpetas requeridas si no existen
-foreach ([BACKUP_FOLDER, __DIR__ . '/cache', __DIR__ . '/uploads', __DIR__ . '/logs'] as $dir) {
+foreach ([BACKUP_FOLDER, STAGING_FOLDER, __DIR__ . '/cache', __DIR__ . '/logs'] as $dir) {
     if (!is_dir($dir)) {
-        mkdir($dir, 0777, true);
+        @mkdir($dir, 0777, true);
     }
+}
+
+function loadLocalEnv(string $path): void
+{
+    if (!is_file($path)) {
+        return;
+    }
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        return;
+    }
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') {
+            continue;
+        }
+        if (!str_contains($line, '=')) {
+            continue;
+        }
+        [$key, $val] = explode('=', $line, 2);
+        $key = trim($key);
+        $val = trim($val, " \t\"'");
+        if ($key !== '' && getenv($key) === false) {
+            putenv("$key=$val");
+            $_ENV[$key] = $val;
+        }
+    }
+}
+
+function normalizeStoragePath(string $path): string
+{
+    $path = trim($path);
+    if ($path === '') {
+        return $path;
+    }
+    if (preg_match('#^\\\\#', $path)) {
+        return rtrim(str_replace('/', '\\', $path), '\\');
+    }
+    return rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path), DIRECTORY_SEPARATOR);
 }

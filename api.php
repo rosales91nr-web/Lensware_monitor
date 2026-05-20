@@ -1,22 +1,16 @@
 <?php
-// api.php - API REST (Railway-ready) - VERSIÓN CORREGIDA
+// api.php - API REST Lensware Pro (XAMPP local)
 
 error_reporting(E_ALL);
-ini_set('display_errors', 0); // No mostrar errores en producción
-
-// Healthcheck para Railway
-if ($_SERVER['REQUEST_URI'] === '/health' || ($_SERVER['PATH_INFO'] ?? '') === '/health') {
-    http_response_code(200);
-    echo 'OK';
-    exit;
-}
+ini_set('display_errors', 0);
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 header('Access-Control-Allow-Headers: Content-Type, X-Upload-Secret');
 
-function respondJson(array $data, int $statusCode = 200): void {
+function respondJson(array $data, int $statusCode = 200): void
+{
     if (ob_get_length() !== false) {
         ob_clean();
     }
@@ -27,7 +21,6 @@ function respondJson(array $data, int $statusCode = 200): void {
 
 require_once __DIR__ . '/config.php';
 
-// Verificar si la función ya existe antes de incluir functions.php
 if (!function_exists('processCSV')) {
     require_once __DIR__ . '/includes/functions.php';
 }
@@ -38,42 +31,77 @@ try {
     switch ($action) {
 
         case 'status':
-            $latestCSV = findLatestCSV();
+            $latestCSV = findLatestDataSource();
+            $cache     = readCache();
             respondJson([
                 'success' => true,
-                'data' => [
-                    'monitor_active' => true,
-                    'latest_file'    => $latestCSV ? basename($latestCSV) : null,
-                    'watch_folder'   => 'uploads/',
-                    'environment'    => getenv('RAILWAY_ENVIRONMENT') ?: 'local'
-                ]
+                'data'    => [
+                    'monitor_active'      => isWatchFolderAccessible() || ($latestCSV !== null),
+                    'reports_accessible'  => isWatchFolderAccessible(),
+                    'watch_folder'        => WATCH_FOLDER,
+                    'staging_folder'      => STAGING_FOLDER,
+                    'backup_folder'       => BACKUP_FOLDER,
+                    'latest_file'         => $latestCSV ? basename($latestCSV) : null,
+                    'latest_modified'     => $latestCSV ? date('Y-m-d H:i:s', @filemtime($latestCSV) ?: time()) : null,
+                    'cache_records'       => $cache ? count($cache['records'] ?? []) : 0,
+                    'cache_age_seconds'   => file_exists(CACHE_FILE) ? (time() - filemtime(CACHE_FILE)) : null,
+                    'environment'         => APP_ENV,
+                ],
             ]);
 
+        case 'sync':
+            $result = syncLiveData(true);
+            if (!$result['success']) {
+                respondJson(['success' => false, 'error' => $result['error']], 200);
+            }
+            respondJson(['success' => true, 'data' => $result]);
+
         case 'data':
-            $cache = readCache();
+            $latest     = findLatestDataSource();
+            $cache      = readCache();
+            $needsSync  = !$cache || empty($cache['records']);
+
+            if ($latest && !$needsSync && file_exists(CACHE_FILE)) {
+                $sourceMtime = @filemtime($latest) ?: 0;
+                $cacheMtime  = filemtime(CACHE_FILE);
+                if ($sourceMtime > $cacheMtime) {
+                    $needsSync = true;
+                }
+            }
+
+            if (!$needsSync && (time() - filemtime(CACHE_FILE)) <= CACHE_TTL) {
+                respondJson(['success' => true, 'data' => $cache]);
+            }
+
+            if ($latest) {
+                $sync = syncLiveData(false);
+                if ($sync['success']) {
+                    $fresh = readCache();
+                    if ($fresh) {
+                        respondJson(['success' => true, 'data' => $fresh]);
+                    }
+                }
+            }
+
             if ($cache && !empty($cache['records'])) {
                 respondJson(['success' => true, 'data' => $cache]);
             }
-            $sourceFile = findLatestDataSource();
-            if (!$sourceFile) {
-                respondJson([
-                    'success' => false,
-                    'error'   => 'No hay datos disponibles. Sube un CSV con el monitor.',
-                ], 200);
-            }
-            if (!isBackupFile($sourceFile)) {
-                ensureCSVBackups($sourceFile);
-            }
-            $result = buildLiveDataPayload($sourceFile);
-            if (!$result) {
-                respondJson(['success' => false, 'error' => 'Error al procesar el archivo'], 500);
-            }
-            saveCache($result);
-            respondJson(['success' => true, 'data' => $result]);
+
+            respondJson([
+                'success' => false,
+                'error'   => 'No hay datos disponibles.',
+                'hint'    => isWatchFolderAccessible()
+                    ? 'Esperando CSV en REPORTS (UNI_PROD_*.csv).'
+                    : 'No se puede leer REPORTS. Verifica red y permisos: ' . WATCH_FOLDER,
+            ], 200);
 
         case 'refresh':
-            if (file_exists(CACHE_FILE)) unlink(CACHE_FILE);
-            respondJson(['success' => true, 'message' => 'Caché limpiado']);
+            $result = syncLiveData(true);
+            respondJson([
+                'success' => $result['success'],
+                'message' => $result['success'] ? 'Datos actualizados desde REPORTS' : ($result['error'] ?? 'Error'),
+                'data'    => $result,
+            ]);
 
         case 'device':
             $deviceName = trim($_GET['name'] ?? '');
@@ -90,28 +118,27 @@ try {
             respondJson(['success' => true, 'backups' => listBackups()]);
 
         case 'backups_by_date':
-            $byDate = groupBackupsByDateFromList(listBackups());
-            $today  = appTodayDate();
-            $result = [];
-            foreach ($byDate as $date => $backups) {
-                $isToday = ($date === $today);
-                $chosen  = pickOfficialBackupMeta($backups, $isToday);
-                $result[] = [
-                    'date'     => $date,
-                    'label'    => $isToday ? 'Hoy' : date('d/m/Y', strtotime($date)),
-                    'is_today' => $isToday,
-                    'backup'   => $chosen,
-                    'all'      => $backups,
-                ];
+            if (empty(loadBackupIndex()['files'])) {
+                rebuildBackupIndex();
             }
-            respondJson(['success' => true, 'data' => $result]);
+            respondJson(['success' => true, 'data' => buildBackupsByDateForApi()]);
+
+        case 'hist_live':
+            $dateFilter = trim($_GET['date'] ?? appTodayDate());
+            $hourFrom   = trim($_GET['hour_from'] ?? '');
+            $hourTo     = trim($_GET['hour_to'] ?? '');
+            $payload    = buildHistLivePayload($dateFilter, $hourFrom, $hourTo);
+            if (!$payload) {
+                respondJson(['success' => false, 'error' => 'Sin registros en vivo para ' . $dateFilter], 404);
+            }
+            respondJson(['success' => true, 'data' => $payload]);
 
         case 'backup_data':
             $filename = basename($_GET['file'] ?? '');
             if ($filename === '' || !str_starts_with($filename, 'BACKUP_')) {
                 respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
             }
-            $filepath = BACKUP_FOLDER . '/' . $filename;
+            $filepath = BACKUP_FOLDER . DIRECTORY_SEPARATOR . $filename;
             if (!file_exists($filepath)) {
                 respondJson(['success' => false, 'error' => 'Backup no encontrado'], 404);
             }
@@ -121,8 +148,14 @@ try {
             }
             $records = $data['records'];
             $dateFilter = trim($_GET['date_filter'] ?? '');
+            if ($dateFilter === '') {
+                $idx = loadBackupIndex()['files'][$filename] ?? [];
+                if (!empty($idx['production_dates']) && count($idx['production_dates']) === 1) {
+                    $dateFilter = $idx['production_dates'][0];
+                }
+            }
             if ($dateFilter !== '') {
-                $records = array_values(array_filter($records, function($r) use ($dateFilter) {
+                $records = array_values(array_filter($records, function ($r) use ($dateFilter) {
                     $normalized = normalizeRecordDate($r['date_raw'] ?? '');
                     return $normalized !== null && $normalized === $dateFilter;
                 }));
@@ -170,8 +203,7 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 respondJson(['success' => false, 'error' => 'Método no permitido'], 405);
             }
-            $requireAuth = (UPLOAD_SECRET !== 'changeme' && UPLOAD_SECRET !== '');
-            if ($requireAuth) {
+            if (UPLOAD_SECRET !== '') {
                 $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
                 if ($secret !== UPLOAD_SECRET) {
                     respondJson(['success' => false, 'error' => 'No autorizado'], 403);
@@ -184,27 +216,38 @@ try {
             $origName = basename($file['name']);
             $validPrefix = false;
             foreach (CSV_PREFIXES as $prefix) {
-                if (str_starts_with($origName, $prefix)) { $validPrefix = true; break; }
+                if (str_starts_with($origName, $prefix)) {
+                    $validPrefix = true;
+                    break;
+                }
             }
             if (!$validPrefix || strtolower(pathinfo($origName, PATHINFO_EXTENSION)) !== 'csv') {
                 respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
             }
-            $dest = WATCH_FOLDER . '/' . $origName;
+            $dest = STAGING_FOLDER . DIRECTORY_SEPARATOR . $origName;
             if (file_exists($dest)) {
                 backupCSV($dest);
             }
             if (!move_uploaded_file($file['tmp_name'], $dest)) {
                 respondJson(['success' => false, 'error' => 'Error al guardar archivo'], 500);
             }
-            ensureCSVBackups($dest);
+            $backupSync = ensureCSVBackups($dest);
             $payload = buildLiveDataPayload($dest);
             $cached  = $payload && saveCache($payload);
-            logMessage("CSV subido: $origName" . ($cached ? ' (caché actualizada)' : ''));
+            logMessage("CSV importado manualmente: $origName" . ($cached ? ' (caché actualizada)' : ''));
+            $msg = "CSV importado: $origName";
+            if (!empty($backupSync['dates'])) {
+                $msg .= ' · Respaldos: ' . count($backupSync['dates']) . ' día(s)';
+                if (!empty($backupSync['replaced'])) {
+                    $msg .= ' (' . count($backupSync['replaced']) . ' reemplazado(s))';
+                }
+            }
             respondJson([
-                'success' => true,
-                'message' => "CSV recibido: $origName",
-                'cached'  => $cached,
-                'records' => $cached ? count($payload['records']) : 0,
+                'success'     => true,
+                'message'     => $msg,
+                'cached'      => $cached,
+                'records'     => $cached ? count($payload['records']) : 0,
+                'backup_sync' => $backupSync,
             ]);
 
         case 'export':
@@ -214,7 +257,9 @@ try {
             }
             $type     = $_GET['type'] ?? 'activity';
             $filename = 'lensware_export_' . date('Ymd_His') . '.csv';
-            if (ob_get_length() !== false) ob_clean();
+            if (ob_get_length() !== false) {
+                ob_clean();
+            }
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
             $output = fopen('php://output', 'w');

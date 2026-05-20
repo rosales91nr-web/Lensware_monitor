@@ -1,6 +1,5 @@
 <?php
-// includes/functions.php - Funciones principales (Railway-ready)
-// VERSIÓN FINAL CORREGIDA - Maneja múltiples quiebras por orden/distintas horas
+// includes/functions.php - Lensware Pro (XAMPP local)
 
 require_once __DIR__ . '/../config.php';
 
@@ -75,38 +74,191 @@ function lensCountFromRecord(array $r): int {
 }
 
 // =============================================================================
-// FUNCIONES DE BÚSQUEDA DE ARCHIVOS
+// FUNCIONES DE BÚSQUEDA DE ARCHIVOS (UNC / REPORTS)
 // =============================================================================
 
-function findLatestCSV(): ?string {
+function isWatchFolderAccessible(): bool
+{
     $folder = WATCH_FOLDER;
-    if (!is_dir($folder)) return null;
-    $latest = null; $latestTs = 0;
-    foreach (CSV_PREFIXES as $prefix) {
-        foreach (array_merge(
-            glob($folder . '/' . $prefix . '*.csv') ?: [],
-            glob($folder . '/' . $prefix . '*.CSV') ?: []
-        ) as $file) {
-            $ts = filemtime($file);
-            if ($ts > $latestTs) { $latestTs = $ts; $latest = $file; }
-        }
+    if ($folder === '') {
+        return false;
     }
-    return $latest;
+    return @is_dir($folder) && @is_readable($folder);
 }
 
-/** Último respaldo BACKUP_*.csv (útil cuando uploads/ está vacío tras redeploy en Railway). */
-function findLatestBackupCSV(): ?string {
+/** Lista CSV válidos en una carpeta (glob + scandir para rutas UNC). */
+function listCsvFilesInFolder(string $folder): array
+{
+    if (!is_dir($folder)) {
+        return [];
+    }
+
+    $sep = str_contains($folder, '\\') ? '\\' : DIRECTORY_SEPARATOR;
+    $found = [];
+
+    foreach (CSV_PREFIXES as $prefix) {
+        foreach (array_merge(
+            glob($folder . $sep . $prefix . '*.csv') ?: [],
+            glob($folder . $sep . $prefix . '*.CSV') ?: []
+        ) as $file) {
+            if (is_file($file)) {
+                $found[$file] = @filemtime($file) ?: 0;
+            }
+        }
+    }
+
+    if ($found !== []) {
+        return $found;
+    }
+
+    $entries = @scandir($folder);
+    if ($entries === false) {
+        return [];
+    }
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        if (strtolower(pathinfo($entry, PATHINFO_EXTENSION)) !== 'csv') {
+            continue;
+        }
+        $match = false;
+        foreach (CSV_PREFIXES as $prefix) {
+            if (stripos($entry, $prefix) === 0) {
+                $match = true;
+                break;
+            }
+        }
+        if (!$match) {
+            continue;
+        }
+        $full = $folder . $sep . $entry;
+        if (is_file($full)) {
+            $found[$full] = @filemtime($full) ?: 0;
+        }
+    }
+
+    return $found;
+}
+
+function findLatestCSVInFolder(string $folder): ?string
+{
+    $files = listCsvFilesInFolder($folder);
+    if ($files === []) {
+        return null;
+    }
+    arsort($files);
+    return array_key_first($files);
+}
+
+function findLatestCSV(): ?string
+{
+    return findLatestCSVInFolder(WATCH_FOLDER);
+}
+
+function findLatestStagingCSV(): ?string
+{
+    if (!defined('STAGING_FOLDER') || STAGING_FOLDER === WATCH_FOLDER) {
+        return null;
+    }
+    return findLatestCSVInFolder(STAGING_FOLDER);
+}
+
+/** Último respaldo BACKUP_*.csv local. */
+function findLatestBackupCSV(): ?string
+{
     $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) return null;
-    $files = glob($dir . '/BACKUP_*.csv') ?: [];
-    if (empty($files)) return null;
+    if (!is_dir($dir)) {
+        return null;
+    }
+    $files = glob($dir . DIRECTORY_SEPARATOR . 'BACKUP_*.csv') ?: [];
+    if (empty($files)) {
+        return null;
+    }
     usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
     return $files[0];
 }
 
-/** uploads/ primero; si no hay CSV, el backup más reciente. */
-function findLatestDataSource(): ?string {
-    return findLatestCSV() ?: findLatestBackupCSV();
+/** REPORTS → staging → backup (el más reciente por mtime). */
+function findLatestDataSource(): ?string
+{
+    $candidates = [];
+
+    foreach ([WATCH_FOLDER, STAGING_FOLDER] as $folder) {
+        $file = findLatestCSVInFolder($folder);
+        if ($file) {
+            $candidates[$file] = @filemtime($file) ?: 0;
+        }
+    }
+
+    if ($candidates !== []) {
+        arsort($candidates);
+        return array_key_first($candidates);
+    }
+
+    return findLatestBackupCSV();
+}
+
+function dataSourceKind(string $filepath): string
+{
+    $norm = strtolower(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $filepath));
+    $watch = strtolower(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, WATCH_FOLDER));
+    if ($watch !== '' && str_starts_with($norm, $watch)) {
+        return 'reports';
+    }
+    if (defined('STAGING_FOLDER')) {
+        $staging = strtolower(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, STAGING_FOLDER));
+        if ($staging !== '' && str_starts_with($norm, $staging)) {
+            return 'staging';
+        }
+    }
+    return isBackupFile($filepath) ? 'backup' : 'file';
+}
+
+/** Sincroniza caché y respaldos desde el CSV más reciente disponible. */
+function syncLiveData(bool $clearCache = false): array
+{
+    if ($clearCache && file_exists(CACHE_FILE)) {
+        @unlink(CACHE_FILE);
+    }
+
+    if (!isWatchFolderAccessible()) {
+        logMessage('REPORTS no accesible: ' . WATCH_FOLDER, 'warning');
+    }
+
+    $source = findLatestDataSource();
+    if (!$source) {
+        return [
+            'success' => false,
+            'error'   => 'No hay CSV en REPORTS ni archivos locales. Verifica acceso a: ' . WATCH_FOLDER,
+        ];
+    }
+
+    $backupSync = null;
+    if (!isBackupFile($source)) {
+        $backupSync = ensureCSVBackups($source);
+    }
+
+    $payload = buildLiveDataPayload($source);
+    if (!$payload) {
+        return ['success' => false, 'error' => 'Error al procesar: ' . basename($source)];
+    }
+
+    saveCache($payload);
+
+    $out = [
+        'success'     => true,
+        'filename'    => $payload['filename'],
+        'source_file' => $payload['source_file'],
+        'data_source' => $payload['data_source'],
+        'records'     => count($payload['records']),
+        'modified'    => date('Y-m-d H:i:s', @filemtime($source) ?: time()),
+    ];
+    if ($backupSync) {
+        $out['backup_sync'] = $backupSync;
+    }
+    return $out;
 }
 
 function isBackupFile(string $filepath): bool {
@@ -142,7 +294,8 @@ function buildLiveDataPayload(string $filepath): ?array {
         'device_stats'  => getDeviceStats($records),
         'filename'      => displayFilename($filepath),
         'source_file'   => basename($filepath),
-        'data_source'   => isBackupFile($filepath) ? 'backup' : 'upload',
+        'data_source'   => dataSourceKind($filepath),
+        'watch_folder'  => WATCH_FOLDER,
         'backup_folder' => BACKUP_FOLDER,
     ];
 }
@@ -716,141 +869,11 @@ function saveCache(array $data): bool {
 }
 
 // =============================================================================
-// FUNCIONES DE BACKUP
-// =============================================================================
-
-function getLastBackupTimestamp(): int {
-    $stateFile = __DIR__ . '/../cache/last_backup.txt';
-    if (!file_exists($stateFile)) return 0;
-    return (int) trim(file_get_contents($stateFile));
-}
-
-function saveLastBackupTimestamp(int $ts): void {
-    $stateFile = __DIR__ . '/../cache/last_backup.txt';
-    $dir = dirname($stateFile);
-    if (!is_dir($dir)) mkdir($dir, 0777, true);
-    file_put_contents($stateFile, (string)$ts, LOCK_EX);
-}
-
-function getLastCSVBackup(string $filepath): ?string {
-    $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) return null;
-    $files = glob($dir . '/BACKUP_*_' . basename($filepath)) ?: [];
-    usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
-    return $files[0] ?? null;
-}
-
-function hasDailyCSVBackup(string $filepath, DateTimeInterface $date): bool {
-    $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) return false;
-    $dailyFile = $dir . '/BACKUP_' . $date->format('Ymd') . '_2359_' . basename($filepath);
-    return file_exists($dailyFile);
-}
-
-function ensureCSVBackups(string $filepath): void {
-    if (!file_exists($filepath)) return;
-
-    $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) {
-        if (!@mkdir($dir, 0777, true)) {
-            logMessage("No se pudo crear BACKUP_FOLDER: $dir", 'error');
-            return;
-        }
-    }
-    if (!is_writable($dir)) {
-        logMessage("BACKUP_FOLDER no tiene permisos de escritura: $dir", 'error');
-        return;
-    }
-
-    $now    = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
-    $csvMts = filemtime($filepath);
-
-    $lastBackupTs = getLastBackupTimestamp();
-    if ($csvMts > $lastBackupTs) {
-        backupCSV($filepath);
-        saveLastBackupTimestamp($csvMts);
-    }
-
-    if ($now->format('Hi') >= '2355' && $now->format('Hi') <= '2359' && !hasDailyCSVBackup($filepath, $now)) {
-        backupCSV($filepath, $now->format('Ymd_2359'));
-    }
-}
-
-function backupCSV(string $filepath, ?string $timestamp = null): void {
-    if (!file_exists($filepath)) return;
-    $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) {
-        if (!@mkdir($dir, 0777, true)) {
-            logMessage("backupCSV: no se pudo crear directorio $dir", 'error');
-            return;
-        }
-    }
-    $stamp = $timestamp ?? date('Ymd_His');
-    $dest  = $dir . '/BACKUP_' . $stamp . '_' . basename($filepath);
-
-    if (file_exists($dest)) {
-        logMessage("Backup ya existe, omitido: " . basename($dest));
-        return;
-    }
-
-    if (!copy($filepath, $dest)) {
-        logMessage("backupCSV: falló copy() hacia $dest", 'error');
-        return;
-    }
-
-    logMessage("Respaldo creado: " . basename($dest));
-}
-
-function listBackups(): array {
-    $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) return [];
-    $files = glob($dir . '/BACKUP_*.csv') ?: [];
-    $list  = [];
-    foreach ($files as $f) {
-        $list[] = [
-            'filename' => basename($f),
-            'name'     => basename($f),
-            'size'     => filesize($f),
-            'modified' => date('Y-m-d H:i:s', filemtime($f)),
-            'is_daily' => str_contains(basename($f), '_2359_'),
-        ];
-    }
-    usort($list, fn($a, $b) => strcmp($b['modified'], $a['modified']));
-    return $list;
-}
-
-// =============================================================================
 // HISTÓRICO POR RANGO DE FECHAS
 // =============================================================================
 
 function appTodayDate(): string {
     return (new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica')))->format('Y-m-d');
-}
-
-function groupBackupsByDateFromList(array $all): array {
-    $byDate = [];
-    foreach ($all as $b) {
-        $name = $b['filename'];
-        if (preg_match('/BACKUP_(\d{4})(\d{2})(\d{2})_/', $name, $m)) {
-            $dateKey = "{$m[1]}-{$m[2]}-{$m[3]}";
-        } else {
-            $dateKey = substr($b['modified'], 0, 10);
-        }
-        $byDate[$dateKey][] = $b;
-    }
-    krsort($byDate);
-    return $byDate;
-}
-
-function pickOfficialBackupMeta(array $backups, bool $isToday): ?array {
-    if ($backups === []) return null;
-    if ($isToday) return $backups[0];
-    foreach ($backups as $b) {
-        if (!empty($b['is_daily']) || str_contains($b['filename'], '_2359_')) {
-            return $b;
-        }
-    }
-    return $backups[0];
 }
 
 function filterRecordsByDateRange(array $records, string $dateFrom, string $dateTo): array {
@@ -905,7 +928,6 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
     }
 
     $today   = appTodayDate();
-    $byDate  = groupBackupsByDateFromList(listBackups());
     $merged  = [];
     $filesLoaded = [];
     $statsByDay  = [];
@@ -922,15 +944,26 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
                 $filesLoaded[] = ['date' => $dateKey, 'source' => 'live', 'filename' => null, 'records' => count($dayRecords)];
             }
         } else {
-            $backups = $byDate[$dateKey] ?? [];
-            $chosen  = pickOfficialBackupMeta($backups, false);
-            if (!$chosen) continue;
-            $path = BACKUP_FOLDER . '/' . $chosen['filename'];
-            if (!is_file($path)) continue;
+            $chosen = pickOfficialBackupForProductionDate($dateKey);
+            if (!$chosen) {
+                continue;
+            }
+            $path = BACKUP_FOLDER . DIRECTORY_SEPARATOR . $chosen['filename'];
+            if (!is_file($path)) {
+                continue;
+            }
             $data = processCSV($path);
-            if (!$data || empty($data['records'])) continue;
+            if (!$data || empty($data['records'])) {
+                continue;
+            }
             $dayRecords = filterRecordsByDateRange($data['records'], $dateKey, $dateKey);
-            $filesLoaded[] = ['date' => $dateKey, 'source' => 'backup', 'filename' => $chosen['filename'], 'records' => count($dayRecords)];
+            $filesLoaded[] = [
+                'date'     => $dateKey,
+                'source'   => 'backup',
+                'filename' => $chosen['filename'],
+                'records'  => count($dayRecords),
+                'is_daily' => !empty($chosen['is_daily']),
+            ];
         }
 
         if ($dayRecords !== []) {
@@ -945,6 +978,7 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
 
     if ($merged === []) return null;
 
+    // Historial completo: nunca eliminar filas del CSV aunque Job/fecha/hora/status coincidan.
     $records = sortRecordsNewestFirst($merged);
 
     return [
@@ -961,6 +995,7 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
             'days_in_range'  => $days,
             'days_with_data' => count($statsByDay),
             'files_loaded'   => $filesLoaded,
+            'total_records'  => count($records),
             'records_count'  => count($records),
         ],
         'stats_by_day' => $statsByDay,
@@ -1033,7 +1068,6 @@ function searchJobHistory(string $jobQuery): array {
     $sources  = [];
     $total    = 0;
 
-    // Datos en vivo
     $liveRecords = sortRecordsNewestFirst(filterRecordsByJob(collectLiveRecordsForSearch(), $jobQuery));
     if (!empty($liveRecords)) {
         $sources[] = [
@@ -1047,14 +1081,17 @@ function searchJobHistory(string $jobQuery): array {
         $total += count($liveRecords);
     }
 
-    // Backups históricos
     foreach (getHistoricalBackupsForSearch() as $meta) {
-        $path = BACKUP_FOLDER . '/' . $meta['filename'];
-        if (!file_exists($path)) continue;
+        $path = BACKUP_FOLDER . DIRECTORY_SEPARATOR . $meta['filename'];
+        if (!file_exists($path)) {
+            continue;
+        }
 
         $data    = processCSV($path);
         $matches = $data ? filterRecordsByJob($data['records'] ?? [], $jobQuery) : [];
-        if (empty($matches)) continue;
+        if (empty($matches)) {
+            continue;
+        }
 
         $matches = sortRecordsNewestFirst($matches);
         $label   = $meta['label'] . ($meta['is_daily'] ? ' · backup diario 23:59' : ' · backup');
@@ -1082,35 +1119,6 @@ function searchJobHistory(string $jobQuery): array {
 // FUNCIONES DE LIMPIEZA Y LOGGING
 // =============================================================================
 
-function cleanupOldBackups(): array {
-    $dir = BACKUP_FOLDER;
-    if (!is_dir($dir)) return ['deleted' => 0, 'kept' => 0, 'files_deleted' => []];
-
-    $files   = glob($dir . '/BACKUP_*.csv') ?: [];
-    $deleted = [];
-    $kept    = 0;
-
-    foreach ($files as $f) {
-        $name = basename($f);
-        if (str_contains($name, '_2359_')) {
-            $kept++;
-            continue;
-        }
-        if (@unlink($f)) {
-            $deleted[] = $name;
-            logMessage("Backup intermedio eliminado: $name");
-        } else {
-            logMessage("No se pudo eliminar: $name", 'error');
-        }
-    }
-
-    return [
-        'deleted'       => count($deleted),
-        'kept'          => $kept,
-        'files_deleted' => $deleted,
-    ];
-}
-
 function logMessage(string $message, string $level = 'info'): void {
     $logDir = __DIR__ . '/../logs';
     if (!is_dir($logDir)) @mkdir($logDir, 0777, true);
@@ -1119,3 +1127,5 @@ function logMessage(string $message, string $level = 'info'): void {
     $entry = "[$timestamp] [$level] $message" . PHP_EOL;
     @file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX);
 }
+
+require_once __DIR__ . '/backup_manager.php';

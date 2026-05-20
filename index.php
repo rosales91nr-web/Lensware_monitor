@@ -1415,7 +1415,8 @@ function togglePwd() {
         <header class="top-bar">
             <div class="page-title">
                 <h1 id="page-title">Dashboard</h1>
-                <p id="file-info">Cargando datos...</p>
+                <p id="file-info">Cargando datos desde REPORTS...</p>
+                <p id="reports-folder" style="font-size:11px;color:#64748b;margin-top:2px;">📂 REPORTS: \\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS</p>
                 <p id="backup-folder" style="font-size:11px;color:#94a3b8;margin-top:2px;">Carpeta de respaldos: cargando...</p>
             </div>
             <div class="top-actions">
@@ -1660,8 +1661,8 @@ function togglePwd() {
                 <div class="hist-empty">
                     <i class="fas fa-calendar-alt" style="color:#cbd5e1;"></i>
                     <h3>Selecciona un día para comenzar</h3>
-                    <p>Elige un backup de la lista superior para visualizar datos históricos.<br>
-                       Hoy muestra el último backup disponible. Días anteriores muestran el respaldo diario oficial (23:59).</p>
+                    <p>Elige un día de producción arriba. <strong>Hoy</strong> puede usar datos en vivo o un respaldo puntual.<br>
+                       Días anteriores usan el respaldo diario oficial (23:59) cuando existe.</p>
                 </div>
             </div>
         </div>
@@ -1671,9 +1672,9 @@ function togglePwd() {
             <div class="upload-container">
                 <div class="upload-zone" id="upload-zone">
                     <i class="fas fa-file-csv"></i>
-                    <h3>Importar archivo CSV</h3>
-                    <p>Arrastra aquí el archivo CSV de Lensware o haz clic para seleccionarlo.<br>
-                       Puedes navegarlo desde <strong>\\172.16.8.32\Lensware\...\REPORTS</strong></p>
+                    <h3>Importar CSV manualmente (opcional)</h3>
+                    <p>El dashboard lee automáticamente desde <strong>REPORTS</strong> en la red.<br>
+                       Usa esta pestaña solo si quieres cargar un archivo distinto sin esperar al monitor.</p>
                     <button class="btn-primary" onclick="document.getElementById('csv-file-input').click()">
                         <i class="fas fa-folder-open"></i> Seleccionar archivo
                     </button>
@@ -1698,9 +1699,9 @@ function togglePwd() {
                     Prefijos válidos: <code>UNI_PROD_ALL_ACT_</code> · <code>UNI_PROD_SIMPLE_ACT_</code><br>
                     Formato: <code>.csv</code> · Codificación: UTF-8, ISO-8859-1 o Windows-1252<br>
                     Tamaño máximo: <code>50 MB</code><br><br>
-                    <strong>Cómo acceder a la carpeta de red:</strong><br>
-                    En el explorador de Windows abre <code>\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS</code>
-                    y selecciona el CSV más reciente.
+                    <strong>Carpeta automática (producción):</strong><br>
+                    <code>\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS</code><br>
+                    Lensware escribe ahí los CSV; el monitor local los detecta cada pocos segundos.
                 </div>
             </div>
         </div>
