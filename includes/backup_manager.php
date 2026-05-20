@@ -1,17 +1,55 @@
 <?php
-// includes/backup_manager.php  Respaldos e ndice para el mdulo histrico
-
-define('BACKUP_STATE_FILE', __DIR__ . '/../cache/backup_state.json');
-define('BACKUP_INDEX_FILE', __DIR__ . '/../cache/backup_index.json');
-define('BACKUP_INTERVAL_SEC', (int)(getenv('BACKUP_INTERVAL_SEC') ?: 300));
+// includes/backup_manager.php - Respaldos e Ã­ndice para el mÃ³dulo histÃ³rico
+// VERSIÃ“N RAILWAY - Todas las rutas usan /tmp para garantizar permisos de escritura
 
 // =============================================================================
-// Estado e ndice
+// CONSTANTES - Usar /tmp en Railway, fallback local
+// =============================================================================
+
+// Detectar si estamos en Railway
+$isRailway = getenv('RAILWAY_ENVIRONMENT') === 'production' || 
+             getenv('RAILWAY_SERVICE_ID') !== false ||
+             getenv('APP_ENV') === 'railway';
+
+if ($isRailway) {
+    // Railway: usar /tmp
+    $tmpBase = sys_get_temp_dir() . '/lensware';
+    if (!defined('BACKUP_STATE_FILE')) {
+        define('BACKUP_STATE_FILE', $tmpBase . '/backups/state.json');
+    }
+    if (!defined('BACKUP_INDEX_FILE')) {
+        define('BACKUP_INDEX_FILE', $tmpBase . '/backups/backup_index.json');
+    }
+    if (!defined('BACKUP_FOLDER')) {
+        define('BACKUP_FOLDER', $tmpBase . '/backups');
+    }
+} else {
+    // Local: usar cache del proyecto
+    if (!defined('BACKUP_STATE_FILE')) {
+        define('BACKUP_STATE_FILE', __DIR__ . '/../cache/backup_state.json');
+    }
+    if (!defined('BACKUP_INDEX_FILE')) {
+        define('BACKUP_INDEX_FILE', __DIR__ . '/../cache/backup_index.json');
+    }
+}
+
+if (!defined('BACKUP_INTERVAL_SEC')) {
+    define('BACKUP_INTERVAL_SEC', (int)(getenv('BACKUP_INTERVAL_SEC') ?: 300));
+}
+
+// Crear carpeta de backups si no existe
+$backupDir = dirname(BACKUP_STATE_FILE);
+if (!is_dir($backupDir)) {
+    @mkdir($backupDir, 0777, true);
+}
+
+// =============================================================================
+// Estado e Ã­ndice
 // =============================================================================
 
 function loadBackupState(): array
 {
-    if (!is_file(BACKUP_STATE_FILE)) {
+    if (!defined('BACKUP_STATE_FILE') || !is_file(BACKUP_STATE_FILE)) {
         return [];
     }
     $data = json_decode((string) file_get_contents(BACKUP_STATE_FILE), true);
@@ -20,6 +58,7 @@ function loadBackupState(): array
 
 function saveBackupState(array $state): void
 {
+    if (!defined('BACKUP_STATE_FILE')) return;
     $dir = dirname(BACKUP_STATE_FILE);
     if (!is_dir($dir)) {
         @mkdir($dir, 0777, true);
@@ -29,7 +68,7 @@ function saveBackupState(array $state): void
 
 function loadBackupIndex(): array
 {
-    if (!is_file(BACKUP_INDEX_FILE)) {
+    if (!defined('BACKUP_INDEX_FILE') || !is_file(BACKUP_INDEX_FILE)) {
         return ['files' => [], 'production_dates' => []];
     }
     $data = json_decode((string) file_get_contents(BACKUP_INDEX_FILE), true);
@@ -43,6 +82,7 @@ function loadBackupIndex(): array
 
 function saveBackupIndex(array $index): void
 {
+    if (!defined('BACKUP_INDEX_FILE')) return;
     $dir = dirname(BACKUP_INDEX_FILE);
     if (!is_dir($dir)) {
         @mkdir($dir, 0777, true);
@@ -112,6 +152,7 @@ function indexBackupFile(string $backupPath): void
 
 function rebuildBackupIndex(): int
 {
+    if (!defined('BACKUP_FOLDER')) return 0;
     $index = ['files' => [], 'production_dates' => []];
     saveBackupIndex($index);
     $count = 0;
@@ -123,10 +164,10 @@ function rebuildBackupIndex(): int
 }
 
 // =============================================================================
-// Respaldos por fecha de produccin (un archivo por da)
+// Respaldos por fecha de producciÃ³n (un archivo por dÃ­a)
 // =============================================================================
 
-/** Agrupa lneas del CSV origen por fecha de produccin (columna Date). */
+/** Agrupa lÃ­neas del CSV origen por fecha de producciÃ³n (columna Date). */
 function splitSourceCsvByProductionDate(string $filepath): ?array
 {
     if (!is_file($filepath)) {
@@ -211,9 +252,10 @@ function productionDateHasBackup(string $productionDate): bool
     return count(getBackupsCoveringProductionDate($productionDate)) > 0;
 }
 
-/** Elimina todos los respaldos asociados a una fecha de produccin. */
+/** Elimina todos los respaldos asociados a una fecha de producciÃ³n. */
 function removeBackupsForProductionDate(string $productionDate): int
 {
+    if (!defined('BACKUP_FOLDER')) return 0;
     $deleted = [];
     $compact = str_replace('-', '', $productionDate);
 
@@ -251,12 +293,15 @@ function removeBackupsForProductionDate(string $productionDate): int
 function writeDailyBackupCsv(string $destPath, string $headerLine, array $dataLines): bool
 {
     $content = "\xEF\xBB\xBF" . $headerLine . "\r\n" . implode("\r\n", $dataLines) . "\r\n";
+    $dir = dirname($destPath);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0777, true);
+    }
     return file_put_contents($destPath, $content, LOCK_EX) !== false;
 }
 
 /**
- * Detecta fechas en el CSV entrante y crea/reemplaza un respaldo diario por cada da.
- * Si el da ya exista en backups, lo sustituye por el nuevo contenido.
+ * Detecta fechas en el CSV entrante y crea/reemplaza un respaldo diario por cada dÃ­a.
  */
 function syncProductionDateBackupsFromCsv(string $sourcePath): array
 {
@@ -273,6 +318,11 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
         return $result;
     }
 
+    if (!defined('BACKUP_FOLDER')) {
+        $result['error'] = 'BACKUP_FOLDER no definido';
+        return $result;
+    }
+
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) {
         @mkdir($dir, 0777, true);
@@ -284,7 +334,7 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
 
     $split = splitSourceCsvByProductionDate($sourcePath);
     if (!$split) {
-        $result['error'] = 'No se detectaron fechas de produccin en el CSV';
+        $result['error'] = 'No se detectaron fechas de producciÃ³n en el CSV';
         return $result;
     }
 
@@ -303,7 +353,9 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
         $destPath = $dir . DIRECTORY_SEPARATOR . $destName;
 
         if (!writeDailyBackupCsv($destPath, $split['header_line'], $lines)) {
-            logMessage("No se pudo escribir respaldo diario: $destName", 'error');
+            if (function_exists('logMessage')) {
+                logMessage("No se pudo escribir respaldo diario: $destName", 'error');
+            }
             continue;
         }
 
@@ -312,10 +364,14 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
 
         if ($hadBackup) {
             $result['replaced'][] = $prodDate;
-            logMessage("Respaldo reemplazado para produccin $prodDate (" . count($lines) . " filas)");
+            if (function_exists('logMessage')) {
+                logMessage("Respaldo reemplazado para producciÃ³n $prodDate (" . count($lines) . " filas)");
+            }
         } else {
             $result['created'][] = $prodDate;
-            logMessage("Respaldo nuevo para produccin $prodDate (" . count($lines) . " filas)");
+            if (function_exists('logMessage')) {
+                logMessage("Respaldo nuevo para producciÃ³n $prodDate (" . count($lines) . " filas)");
+            }
         }
     }
 
@@ -324,7 +380,7 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
 }
 
 // =============================================================================
-// Crear respaldos (copia completa  uso legacy)
+// Crear respaldos (copia completa o uso legacy)
 // =============================================================================
 
 function backupCSV(string $filepath, ?string $timestamp = null): bool
@@ -332,10 +388,14 @@ function backupCSV(string $filepath, ?string $timestamp = null): bool
     if (!file_exists($filepath)) {
         return false;
     }
+    if (!defined('BACKUP_FOLDER')) return false;
+    
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) {
         if (!@mkdir($dir, 0777, true)) {
-            logMessage("backupCSV: no se pudo crear $dir", 'error');
+            if (function_exists('logMessage')) {
+                logMessage("backupCSV: no se pudo crear $dir", 'error');
+            }
             return false;
         }
     }
@@ -348,29 +408,34 @@ function backupCSV(string $filepath, ?string $timestamp = null): bool
     }
 
     if (!@copy($filepath, $dest)) {
-        logMessage("backupCSV: fall copy() ? $dest", 'error');
+        if (function_exists('logMessage')) {
+            logMessage("backupCSV: fallÃ³ copy() a $dest", 'error');
+        }
         return false;
     }
 
-    logMessage('Respaldo: ' . basename($dest));
+    if (function_exists('logMessage')) {
+        logMessage('Respaldo: ' . basename($dest));
+    }
     indexBackupFile($dest);
     return true;
 }
 
 function hasDailyBackupForDate(string $dateYmd, string $sourceBasename): bool
 {
+    if (!defined('BACKUP_FOLDER')) return false;
     $pattern = BACKUP_FOLDER . DIRECTORY_SEPARATOR . 'BACKUP_' . $dateYmd . '_2359_' . $sourceBasename;
     return is_file($pattern);
 }
 
-/** Cierra el da: crea BACKUP_YYYYMMDD_2359 si falt (ayer o hoy en ventana nocturna). */
+/** Cierra el dÃ­a: crea BACKUP_YYYYMMDD_2359 si faltÃ³. */
 function finalizeDailyBackups(?string $sourceFile = null): array
 {
     $tz   = new DateTimeZone('America/Costa_Rica');
     $now  = new DateTimeImmutable('now', $tz);
     $done = [];
 
-    $source = $sourceFile ?: findLatestCSV();
+    $source = $sourceFile ?: (function_exists('findLatestCSV') ? findLatestCSV() : null);
     if (!$source || !is_file($source)) {
         return $done;
     }
@@ -389,7 +454,9 @@ function finalizeDailyBackups(?string $sourceFile = null): array
         }
         if (backupCSV($source, $compact . '_2359')) {
             $done[] = $compact . '_2359';
-            logMessage("Respaldo diario histrico: $dateYmd");
+            if (function_exists('logMessage')) {
+                logMessage("Respaldo diario histÃ³rico: $dateYmd");
+            }
         }
     }
 
@@ -397,10 +464,7 @@ function finalizeDailyBackups(?string $sourceFile = null): array
 }
 
 /**
- * Respaldos inteligentes al sincronizar:
- * - Diario 23:59 (o recuperacin al da siguiente)
- * - Incremental cada BACKUP_INTERVAL_SEC si cambi el CSV en REPORTS
- * - Siempre al detectar archivo nuevo (nombre distinto)
+ * Respaldos inteligentes al sincronizar
  */
 function ensureCSVBackups(string $filepath): array
 {
@@ -408,12 +472,18 @@ function ensureCSVBackups(string $filepath): array
         return ['success' => false, 'error' => 'Archivo no existe'];
     }
 
+    if (!defined('BACKUP_FOLDER')) {
+        return ['success' => false, 'error' => 'BACKUP_FOLDER no definido'];
+    }
+
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) {
         @mkdir($dir, 0777, true);
     }
     if (!is_writable($dir)) {
-        logMessage('BACKUP_FOLDER sin escritura: ' . $dir, 'error');
+        if (function_exists('logMessage')) {
+            logMessage('BACKUP_FOLDER sin escritura: ' . $dir, 'error');
+        }
         return ['success' => false, 'error' => 'Sin permisos'];
     }
 
@@ -430,6 +500,8 @@ function ensureCSVBackups(string $filepath): array
 
 function listBackups(): array
 {
+    if (!defined('BACKUP_FOLDER')) return [];
+    
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) {
         return [];
@@ -460,7 +532,7 @@ function listBackups(): array
 }
 
 // =============================================================================
-// Histrico por fecha de produccin
+// HistÃ³rico por fecha de producciÃ³n
 // =============================================================================
 
 function getAvailableProductionDates(): array
@@ -468,12 +540,12 @@ function getAvailableProductionDates(): array
     $index = loadBackupIndex();
     $dates = $index['production_dates'] ?? [];
 
-    if ($dates === [] && is_dir(BACKUP_FOLDER)) {
+    if ($dates === [] && defined('BACKUP_FOLDER') && is_dir(BACKUP_FOLDER)) {
         rebuildBackupIndex();
         $dates = loadBackupIndex()['production_dates'] ?? [];
     }
 
-    $today = appTodayDate();
+    $today = function_exists('appTodayDate') ? appTodayDate() : date('Y-m-d');
     if (!in_array($today, $dates, true)) {
         $live = function_exists('collectLiveRecordsForSearch') ? collectLiveRecordsForSearch() : [];
         if ($live !== []) {
@@ -538,10 +610,10 @@ function pickOfficialBackupForProductionDate(string $productionDate): ?array
     return $backups[0];
 }
 
-/** Lista para api.php?action=backups_by_date (por fecha de produccin). */
+/** Lista para api.php?action=backups_by_date (por fecha de producciÃ³n). */
 function buildBackupsByDateForApi(): array
 {
-    $today  = appTodayDate();
+    $today  = function_exists('appTodayDate') ? appTodayDate() : date('Y-m-d');
     $dates  = getAvailableProductionDates();
     $result = [];
 
@@ -570,21 +642,28 @@ function buildBackupsByDateForApi(): array
 
 function buildHistLivePayload(string $productionDate, string $hourFrom = '', string $hourTo = ''): ?array
 {
-    $live = collectLiveRecordsForSearch();
+    $live = function_exists('collectLiveRecordsForSearch') ? collectLiveRecordsForSearch() : [];
     if ($live === []) {
-        $source = findLatestDataSource();
-        if ($source) {
+        $source = function_exists('findLatestDataSource') ? findLatestDataSource() : null;
+        if ($source && function_exists('processCSV')) {
             $data = processCSV($source);
             $live = $data['records'] ?? [];
         }
     }
 
-    $records = filterRecordsByDateRange($live, $productionDate, $productionDate);
-    $records = filterRecordsByHourRange(
-        $records,
-        $hourFrom !== '' ? (int) $hourFrom : null,
-        $hourTo !== '' ? (int) $hourTo : null
-    );
+    if (function_exists('filterRecordsByDateRange')) {
+        $records = filterRecordsByDateRange($live, $productionDate, $productionDate);
+    } else {
+        $records = $live;
+    }
+    
+    if (function_exists('filterRecordsByHourRange')) {
+        $records = filterRecordsByHourRange(
+            $records,
+            $hourFrom !== '' ? (int) $hourFrom : null,
+            $hourTo !== '' ? (int) $hourTo : null
+        );
+    }
 
     if ($records === []) {
         return null;
@@ -592,9 +671,9 @@ function buildHistLivePayload(string $productionDate, string $hourFrom = '', str
 
     return [
         'records'      => $records,
-        'stats'        => calculateStatsCorrected($records),
-        'breakages'    => getBreakagesConsolidated($records),
-        'device_stats' => getDeviceStats($records),
+        'stats'        => function_exists('calculateStatsCorrected') ? calculateStatsCorrected($records) : [],
+        'breakages'    => function_exists('getBreakagesConsolidated') ? getBreakagesConsolidated($records) : [],
+        'device_stats' => function_exists('getDeviceStats') ? getDeviceStats($records) : [],
         'filename'     => 'REPORTS en vivo',
         'source'       => 'live',
         'filters'      => [
@@ -605,7 +684,10 @@ function buildHistLivePayload(string $productionDate, string $hourFrom = '', str
     ];
 }
 
-// Compatibilidad con cdigo existente
+// =============================================================================
+// Compatibilidad con cÃ³digo existente
+// =============================================================================
+
 function groupBackupsByDateFromList(array $all): array
 {
     $byDate = [];
@@ -638,6 +720,8 @@ function pickOfficialBackupMeta(array $backups, bool $isToday): ?array
 
 function cleanupOldBackups(int $keepIncrementalDays = 7): array
 {
+    if (!defined('BACKUP_FOLDER')) return ['deleted' => 0, 'kept' => 0, 'files_deleted' => []];
+    
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) {
         return ['deleted' => 0, 'kept' => 0, 'files_deleted' => []];
@@ -692,6 +776,7 @@ function saveLastBackupTimestamp(int $ts): void
 
 function getLastCSVBackup(string $filepath): ?string
 {
+    if (!defined('BACKUP_FOLDER')) return null;
     $files = glob(BACKUP_FOLDER . DIRECTORY_SEPARATOR . 'BACKUP_*_' . basename($filepath)) ?: [];
     usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
     return $files[0] ?? null;
