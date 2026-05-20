@@ -1,8 +1,33 @@
 <?php
 // api.php - API REST Lensware Pro (XAMPP local)
 
+ob_start();
+
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+// ── Captura errores fatales y los convierte en JSON limpio ──────────────────
+register_shutdown_function(function () {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        while (ob_get_level() > 0) ob_end_clean();
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error'   => 'PHP fatal: ' . $e['message'],
+            'file'    => basename($e['file']),
+            'line'    => $e['line'],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+});
+
+// ── Convierte E_WARNING / E_NOTICE en excepciones para atraparlos ───────────
+set_error_handler(function (int $errno, string $errstr, string $errfile, int $errline): bool {
+    if (!(error_reporting() & $errno)) return false;
+    throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
+});
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -11,9 +36,7 @@ header('Access-Control-Allow-Headers: Content-Type, X-Upload-Secret');
 
 function respondJson(array $data, int $statusCode = 200): void
 {
-    if (ob_get_length() !== false) {
-        ob_clean();
-    }
+    while (ob_get_level() > 0) ob_end_clean();
     http_response_code($statusCode);
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
@@ -48,6 +71,7 @@ try {
                     'environment'         => APP_ENV,
                 ],
             ]);
+            break;
 
         case 'sync':
             $result = syncLiveData(true);
@@ -55,6 +79,7 @@ try {
                 respondJson(['success' => false, 'error' => $result['error']], 200);
             }
             respondJson(['success' => true, 'data' => $result]);
+            break;
 
         case 'data':
             $latest     = findLatestDataSource();
@@ -94,6 +119,7 @@ try {
                     ? 'Esperando CSV en REPORTS (UNI_PROD_*.csv).'
                     : 'No se puede leer REPORTS. Verifica red y permisos: ' . WATCH_FOLDER,
             ], 200);
+            break;
 
         case 'refresh':
             $result = syncLiveData(true);
@@ -102,6 +128,7 @@ try {
                 'message' => $result['success'] ? 'Datos actualizados desde REPORTS' : ($result['error'] ?? 'Error'),
                 'data'    => $result,
             ]);
+            break;
 
         case 'device':
             $deviceName = trim($_GET['name'] ?? '');
@@ -113,15 +140,18 @@ try {
                 respondJson(['success' => false, 'error' => 'No hay datos']);
             }
             respondJson(['success' => true, 'details' => getDeviceDetails($cache['records'], $deviceName)]);
+            break;
 
         case 'backups':
             respondJson(['success' => true, 'backups' => listBackups()]);
+            break;
 
         case 'backups_by_date':
             if (empty(loadBackupIndex()['files'])) {
                 rebuildBackupIndex();
             }
             respondJson(['success' => true, 'data' => buildBackupsByDateForApi()]);
+            break;
 
         case 'hist_live':
             $dateFilter = trim($_GET['date'] ?? appTodayDate());
@@ -132,6 +162,7 @@ try {
                 respondJson(['success' => false, 'error' => 'Sin registros en vivo para ' . $dateFilter], 404);
             }
             respondJson(['success' => true, 'data' => $payload]);
+            break;
 
         case 'backup_data':
             $filename = basename($_GET['file'] ?? '');
@@ -184,20 +215,43 @@ try {
                 ],
             ];
             respondJson(['success' => true, 'data' => $result]);
+            break;
 
         case 'backup_range':
+            // OPTIMIZADO: Aumento de memoria y tiempo para rangos grandes
+            ini_set('memory_limit', '1024M');
+            ini_set('max_execution_time', 600);
+            
             $dateFrom = trim($_GET['date_from'] ?? '');
             $dateTo   = trim($_GET['date_to'] ?? '');
             $hourFrom = trim($_GET['hour_from'] ?? '');
             $hourTo   = trim($_GET['hour_to'] ?? '');
+            
             if ($dateFrom === '' || $dateTo === '') {
                 respondJson(['success' => false, 'error' => 'Parámetros date_from y date_to requeridos'], 400);
             }
+            
             $payload = buildBackupRangePayload($dateFrom, $dateTo, $hourFrom, $hourTo);
-            if (!$payload || empty($payload['records'])) {
+            
+            if (!$payload) {
+                respondJson(['success' => false, 'error' => 'Sin registros en ese rango'], 404);
+            }
+            if (isset($payload['_error'])) {
+                if ($payload['_error'] === 'max_days') {
+                    respondJson([
+                        'success'   => false,
+                        'error'     => 'El rango solicitado (' . $payload['requested'] . ' días) supera el máximo permitido de ' . $payload['max_days'] . ' días.',
+                        'max_days'  => $payload['max_days'],
+                        'requested' => $payload['requested'],
+                    ], 400);
+                }
+                respondJson(['success' => false, 'error' => 'Error interno al construir el rango.'], 500);
+            }
+            if (empty($payload['records'])) {
                 respondJson(['success' => false, 'error' => 'Sin registros en ese rango'], 404);
             }
             respondJson(['success' => true, 'data' => $payload]);
+            break;
 
         case 'upload_csv':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -249,6 +303,7 @@ try {
                 'records'     => $cached ? count($payload['records']) : 0,
                 'backup_sync' => $backupSync,
             ]);
+            break;
 
         case 'export':
             $cache = readCache();
@@ -257,9 +312,7 @@ try {
             }
             $type     = $_GET['type'] ?? 'activity';
             $filename = 'lensware_export_' . date('Ymd_His') . '.csv';
-            if (ob_get_length() !== false) {
-                ob_clean();
-            }
+            while (ob_get_level() > 0) ob_end_clean();
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
             $output = fopen('php://output', 'w');
@@ -288,6 +341,7 @@ try {
             }
             fclose($output);
             exit;
+            break;
 
         case 'search_job':
             $job = trim($_GET['job'] ?? '');
@@ -299,6 +353,7 @@ try {
                 respondJson(['success' => false, 'error' => "No se encontró el Job «{$job}»"], 404);
             }
             respondJson(['success' => true, 'data' => $result]);
+            break;
 
         case 'cleanup_backups':
             // Requiere la misma clave que upload_csv para proteger la operación.
@@ -318,7 +373,20 @@ try {
         default:
             respondJson(['success' => false, 'error' => 'Acción no válida'], 400);
     }
-} catch (Exception $e) {
-    logMessage($e->getMessage(), 'error');
-    respondJson(['success' => false, 'error' => $e->getMessage()], 500);
+} catch (Throwable $e) {
+    while (ob_get_level() > 0) ob_end_clean();
+    http_response_code(500);
+    header('Content-Type: application/json');
+    $msg = $e->getMessage();
+    $msg = preg_replace('#[A-Za-z]:[/\\\\][^ ]*#', '[path]', $msg);
+    $msg = preg_replace('#/[^ ]*#', '[path]', $msg);
+    echo json_encode([
+        'success' => false,
+        'error'   => $msg,
+        'type'    => basename(str_replace('\\', '/', get_class($e))),
+        'file'    => basename($e->getFile()),
+        'line'    => $e->getLine(),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
 }
+?>

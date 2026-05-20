@@ -160,116 +160,116 @@ function processCSV(string $filepath): ?array {
         return null;
     }
 
-    $raw = file_get_contents($filepath);
-    if ($raw === false) {
-        logMessage("No se pudo leer el archivo: $filepath", 'error');
+    // Leer solo la primera línea para detectar delimitador
+    $handle = fopen($filepath, 'r');
+    if (!$handle) {
+        logMessage("No se pudo abrir el archivo: $filepath", 'error');
         return null;
     }
 
-    $raw = ltrim($raw, "\xEF\xBB\xBF");
-    $raw = normalizeCsvEncoding($raw);
-
-    $lines = preg_split('/\r\n|\n|\r/', trim($raw));
-    if (count($lines) < 2) {
-        logMessage("Archivo con menos de 2 líneas: " . count($lines), 'error');
+    // Leer cabecera (quitando BOM si existe)
+    $headerRaw = fgets($handle);
+    if ($headerRaw === false) {
+        fclose($handle);
+        logMessage("Archivo vacío o sin cabecera: $filepath", 'error');
         return null;
     }
+    $headerRaw = ltrim($headerRaw, "\xEF\xBB\xBF");
+    $headerNorm = normalizeCsvEncoding(rtrim($headerRaw, "\r\n"));
 
-    $firstLine  = $lines[0];
+    // Detectar delimitador
     $delimiters = ["\t", ";", ",", "|"];
-    $delimiter  = null;
-    $maxCount   = 0;
-
+    $delimiter = "\t";
+    $maxCount = 0;
     foreach ($delimiters as $d) {
-        $count = substr_count($firstLine, $d);
-        if ($count > $maxCount) { $maxCount = $count; $delimiter = $d; }
+        $count = substr_count($headerNorm, $d);
+        if ($count > $maxCount) {
+            $maxCount = $count;
+            $delimiter = $d;
+        }
     }
-
-    if (!$delimiter) {
-        logMessage("No se pudo detectar el delimitador", 'error');
+    if ($maxCount === 0) {
+        fclose($handle);
+        logMessage("No se pudo detectar el delimitador en: $filepath", 'error');
         return null;
     }
 
-    logMessage("Delimitador detectado: '" . ($delimiter === "\t" ? "TAB" : $delimiter) . "'");
-
-    $header = array_map('trim', str_getcsv($lines[0], $delimiter));
+    // Parsear cabecera
+    $header = array_map('trim', str_getcsv($headerNorm, $delimiter));
     if (end($header) === '') array_pop($header);
-
-    logMessage("Cabecera encontrada (" . count($header) . " columnas): " . json_encode($header));
+    $headerCount = count($header);
 
     $requiredCols = ['Job', 'Status', 'Date', 'Time'];
-    $missingCols  = [];
-    foreach ($requiredCols as $col) {
-        if (!in_array($col, $header)) $missingCols[] = $col;
-    }
-
+    $missingCols = array_diff($requiredCols, $header);
     if (!empty($missingCols)) {
-        logMessage("Columnas requeridas faltantes: " . json_encode($missingCols), 'error');
+        fclose($handle);
+        logMessage("Columnas requeridas faltantes: " . json_encode(array_values($missingCols)), 'error');
         return null;
     }
 
     global $STATUS_LABELS;
     $records = [];
+    $lineNum = 0;
 
-    for ($i = 1; $i < count($lines); $i++) {
-        $line = rtrim($lines[$i], "\r\n;");
-        if ($line === '') continue;
+    // Leer línea por línea
+    while (($line = fgets($handle)) !== false) {
+        $lineNum++;
+        $line = normalizeCsvEncoding(rtrim($line, "\r\n"));
+        $line = rtrim($line, ';');
+        if (trim($line) === '') continue;
 
         $cols = str_getcsv($line, $delimiter);
-
-        if (count($cols) > count($header)) {
-            $cols = array_slice($cols, 0, count($header));
-        } elseif (count($cols) < count($header)) {
-            $cols = array_pad($cols, count($header), '');
+        
+        if (count($cols) > $headerCount) {
+            $cols = array_slice($cols, 0, $headerCount);
+        } elseif (count($cols) < $headerCount) {
+            $cols = array_pad($cols, $headerCount, '');
         }
 
         $row = array_combine($header, $cols);
-        if (!$row) {
-            logMessage("Error al combinar fila $i", 'warning');
-            continue;
-        }
+        if (!$row) continue;
 
         $job = sanitizeCsvField($row['Job'] ?? '');
         if ($job === '') continue;
 
         $status = sanitizeCsvField($row['Status'] ?? '');
-
+        
         $sideRaw = sanitizeCsvField($row['R/L'] ?? '');
         $sideLabel = match(strtoupper(str_replace([' ', '\\'], '', $sideRaw))) {
-            'R', 'OD'   => 'OD',
-            'L', 'OI'   => 'OI',
+            'R', 'OD' => 'OD',
+            'L', 'OI' => 'OI',
             'R/L', 'RL', 'OD+OI', 'OI+OD' => 'OD+OI',
             default => $sideRaw,
         };
 
         $records[] = [
-            'job'          => $job,
-            'status'       => $status,
+            'job' => $job,
+            'status' => $status,
             'status_label' => $STATUS_LABELS[$status] ?? $status,
-            'is_breakage'  => ($status === 'BREA'),
-            'date_raw'     => sanitizeCsvField($row['Date'] ?? ''),
-            'time_raw'     => sanitizeCsvField($row['Time'] ?? ''),
-            'user'         => sanitizeCsvField($row['User'] ?? ''),
-            'device'       => sanitizeCsvField($row['Device'] ?? ''),
-            'side'         => $sideRaw,
-            'side_label'   => $sideLabel,
-            'lens_desc'    => sanitizeCsvField($row['Lens description'] ?? ''),
-            'blank_desc'   => sanitizeCsvField($row['Blank description'] ?? ''),
-            'reason'       => sanitizeCsvField($row['Reason'] ?? ''),
+            'is_breakage' => ($status === 'BREA'),
+            'date_raw' => sanitizeCsvField($row['Date'] ?? ''),
+            'time_raw' => sanitizeCsvField($row['Time'] ?? ''),
+            'user' => sanitizeCsvField($row['User'] ?? ''),
+            'device' => sanitizeCsvField($row['Device'] ?? ''),
+            'side' => $sideRaw,
+            'side_label' => $sideLabel,
+            'lens_desc' => sanitizeCsvField($row['Lens description'] ?? ''),
+            'blank_desc' => sanitizeCsvField($row['Blank description'] ?? ''),
+            'reason' => sanitizeCsvField($row['Reason'] ?? ''),
             'reason_descr' => sanitizeCsvField($row['Reason Descr'] ?? ''),
-            'dep'          => sanitizeCsvField($row['Dep BR/RM'] ?? ''),
-            'text'         => sanitizeCsvField($row['Text'] ?? ''),
-            'batch_info'   => sanitizeCsvField($row['Batch/Info'] ?? ''),
-            'sg'           => sanitizeCsvField($row['Sg'] ?? ''),
-            'option'       => sanitizeCsvField($row['Option'] ?? ''),
-            'type'         => sanitizeCsvField($row['Type'] ?? ''),
-            'dm'           => sanitizeCsvField($row['DM'] ?? ''),
-            'bcrv'         => sanitizeCsvField($row['Bcrv'] ?? ''),
-            'index_val'    => ($indexRaw = trim($row['Index'] ?? '')) !== ''
-                ? (float) str_replace(',', '.', $indexRaw)
-                : null,
+            'dep' => sanitizeCsvField($row['Dep BR/RM'] ?? ''),
+            'text' => sanitizeCsvField($row['Text'] ?? ''),
+            'batch_info' => sanitizeCsvField($row['Batch/Info'] ?? ''),
+            'sg' => sanitizeCsvField($row['Sg'] ?? ''),
+            'option' => sanitizeCsvField($row['Option'] ?? ''),
+            'type' => sanitizeCsvField($row['Type'] ?? ''),
+            'dm' => sanitizeCsvField($row['DM'] ?? ''),
+            'bcrv' => sanitizeCsvField($row['Bcrv'] ?? ''),
+            'index_val' => ($indexRaw = trim($row['Index'] ?? '')) !== '' ? (float) str_replace(',', '.', $indexRaw) : null,
         ];
     }
+
+    fclose($handle);
 
     if (empty($records)) {
         logMessage("No se encontraron registros válidos en el archivo", 'error');
@@ -930,7 +930,14 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
             $data = processCSV($path);
             if (!$data || empty($data['records'])) continue;
             $dayRecords = filterRecordsByDateRange($data['records'], $dateKey, $dateKey);
-            $filesLoaded[] = ['date' => $dateKey, 'source' => 'backup', 'filename' => $chosen['filename'], 'records' => count($dayRecords)];
+            unset($data); // liberar RAM inmediatamente tras extraer los registros del día
+            $filesLoaded[] = [
+                'date'     => $dateKey,
+                'source'   => 'backup',
+                'filename' => $chosen['filename'],
+                'records'  => count($dayRecords),
+                'is_daily' => !empty($chosen['is_daily']),
+            ];
         }
 
         if ($dayRecords !== []) {
