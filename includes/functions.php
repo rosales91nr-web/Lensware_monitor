@@ -1124,6 +1124,200 @@ function cleanupOldBackups(): array {
     ];
 }
 
+// =============================================================================
+// FUNCIONES DE ÍNDICE DE BACKUPS PARA EL MÓDULO HISTÓRICO
+// =============================================================================
+
+define('BACKUP_INDEX_FILE', dirname(__DIR__) . '/data/backup_index.json');
+
+/**
+ * Reconstruye el índice de backups escaneando la carpeta BACKUP_FOLDER
+ */
+function rebuildBackupIndex(): bool {
+    $backupFolder = BACKUP_FOLDER;
+    if (!is_dir($backupFolder)) {
+        logMessage("rebuildBackupIndex: BACKUP_FOLDER no existe: $backupFolder", 'error');
+        return false;
+    }
+    
+    $files = glob($backupFolder . '/BACKUP_*.csv');
+    if (empty($files)) {
+        logMessage("rebuildBackupIndex: No se encontraron backups en $backupFolder");
+        $index = ['files' => [], 'last_rebuild' => time()];
+        file_put_contents(BACKUP_INDEX_FILE, json_encode($index));
+        return true;
+    }
+    
+    $index = ['files' => [], 'last_rebuild' => time()];
+    
+    foreach ($files as $file) {
+        $filename = basename($file);
+        
+        // Extraer fecha del nombre del backup (formato BACKUP_YYYYMMDD_...)
+        if (preg_match('/BACKUP_(\d{4})(\d{2})(\d{2})_/', $filename, $matches)) {
+            $date = $matches[1] . '-' . $matches[2] . '-' . $matches[3];
+            $index['files'][$filename] = [
+                'date' => $date,
+                'size' => filesize($file),
+                'modified' => date('Y-m-d H:i:s', filemtime($file)),
+                'is_daily' => str_contains($filename, '_2359_')
+            ];
+        } else {
+            // Fallback: usar fecha de modificación
+            $date = date('Y-m-d', filemtime($file));
+            $index['files'][$filename] = [
+                'date' => $date,
+                'size' => filesize($file),
+                'modified' => date('Y-m-d H:i:s', filemtime($file)),
+                'is_daily' => str_contains($filename, '_2359_')
+            ];
+        }
+    }
+    
+    // Ordenar por fecha (más reciente primero)
+    uasort($index['files'], function($a, $b) {
+        return strcmp($b['date'], $a['date']);
+    });
+    
+    $result = file_put_contents(BACKUP_INDEX_FILE, json_encode($index, JSON_PRETTY_PRINT));
+    if ($result === false) {
+        logMessage("rebuildBackupIndex: No se pudo guardar el índice en " . BACKUP_INDEX_FILE, 'error');
+        return false;
+    }
+    
+    logMessage("rebuildBackupIndex: Indexados " . count($index['files']) . " backups");
+    return true;
+}
+
+/**
+ * Carga el índice de backups desde el archivo JSON
+ */
+function loadBackupIndex(): array {
+    if (!file_exists(BACKUP_INDEX_FILE)) {
+        // Si no existe el índice, reconstruirlo
+        rebuildBackupIndex();
+    }
+    
+    if (file_exists(BACKUP_INDEX_FILE)) {
+        $content = file_get_contents(BACKUP_INDEX_FILE);
+        if ($content !== false) {
+            $index = json_decode($content, true);
+            if (is_array($index) && isset($index['files'])) {
+                return $index;
+            }
+        }
+    }
+    
+    return ['files' => [], 'last_rebuild' => 0];
+}
+
+/**
+ * Construye el array de backups agrupados por fecha para la API
+ */
+function buildBackupsByDateForApi(): array {
+    $index = loadBackupIndex();
+    $byDate = [];
+    
+    foreach ($index['files'] as $filename => $info) {
+        $date = $info['date'];
+        if (!isset($byDate[$date])) {
+            $byDate[$date] = [
+                'date' => $date,
+                'label' => date('d/m/Y', strtotime($date)),
+                'is_today' => ($date == date('Y-m-d')),
+                'has_daily' => false,
+                'all' => []
+            ];
+        }
+        
+        $backupItem = [
+            'filename' => $filename,
+            'size' => $info['size'],
+            'modified' => $info['modified'],
+            'is_daily' => $info['is_daily'] ?? str_contains($filename, '_2359_')
+        ];
+        
+        if ($backupItem['is_daily']) {
+            $byDate[$date]['has_daily'] = true;
+            $byDate[$date]['daily_backup'] = $backupItem;
+        }
+        
+        $byDate[$date]['all'][] = $backupItem;
+        
+        // Para compatibilidad con el frontend que espera 'backup'
+        if (!isset($byDate[$date]['backup']) || $backupItem['is_daily']) {
+            $byDate[$date]['backup'] = $backupItem;
+        }
+    }
+    
+    // Ordenar por fecha descendente
+    krsort($byDate);
+    
+    // Convertir a array indexado
+    $result = [];
+    foreach ($byDate as $date => $data) {
+        // Ordenar backups por hora (los diarios al final)
+        usort($data['all'], function($a, $b) {
+            if ($a['is_daily'] && !$b['is_daily']) return 1;
+            if (!$a['is_daily'] && $b['is_daily']) return -1;
+            return strcmp($a['modified'], $b['modified']);
+        });
+        
+        $result[] = $data;
+    }
+    
+    return $result;
+}
+
+/**
+ * Obtiene el payload de un día específico (para el módulo histórico)
+ */
+function buildHistLivePayload(string $dateFilter, string $hourFrom = '', string $hourTo = ''): ?array {
+    $records = collectLiveRecordsForSearch();
+    $records = filterRecordsByDateRange($records, $dateFilter, $dateFilter);
+    $records = filterRecordsByHourRange($records, $hourFrom !== '' ? (int)$hourFrom : null, $hourTo !== '' ? (int)$hourTo : null);
+    
+    if (empty($records)) {
+        return null;
+    }
+    
+    return [
+        'records' => sortRecordsNewestFirst($records),
+        'stats' => calculateStatsCorrected($records),
+        'breakages' => getBreakagesConsolidated($records),
+        'device_stats' => getDeviceStats($records),
+        'source' => 'live',
+        'filters' => ['date_filter' => $dateFilter, 'hour_from' => $hourFrom, 'hour_to' => $hourTo]
+    ];
+}
+
+/**
+ * Fuerza la sincronización de datos en vivo
+ */
+function syncLiveData(bool $forceRefresh = false): array {
+    $latest = findLatestDataSource();
+    if (!$latest) {
+        return ['success' => false, 'error' => 'No se encontraron archivos CSV para sincronizar'];
+    }
+    
+    $payload = buildLiveDataPayload($latest);
+    if (!$payload || empty($payload['records'])) {
+        return ['success' => false, 'error' => 'No se pudieron procesar los datos del archivo'];
+    }
+    
+    saveCache($payload);
+    
+    // Asegurar que se crea un backup
+    ensureCSVBackups($latest);
+    
+    return [
+        'success' => true,
+        'records' => count($payload['records']),
+        'source' => basename($latest),
+        'message' => 'Datos sincronizados correctamente'
+    ];
+}
+
 function logMessage(string $message, string $level = 'info'): void {
     $logDir = __DIR__ . '/../logs';
     if (!is_dir($logDir)) @mkdir($logDir, 0777, true);
