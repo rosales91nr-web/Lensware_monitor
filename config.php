@@ -17,33 +17,29 @@ if (file_exists(__DIR__ . '/.env')) {
 // CONFIGURACIÓN PARA RAILWAY (Linux)
 // ─────────────────────────────────────────────────────
 if ($isRailway) {
-
-    // Railway: usar filesystem temporal escribible
-    $dataPath = sys_get_temp_dir() . '/lensware';
-
-    define('WATCH_FOLDER', $dataPath . '/staging');
-    define('STAGING_FOLDER', $dataPath . '/staging');
-    define('BACKUP_FOLDER', $dataPath . '/backups');
-
-    define('CACHE_FILE', $dataPath . '/cache/cache.json');
-
-    define(
-        'BACKUP_INDEX_FILE',
-        $dataPath . '/backups/backup_index.json'
-    );
-
-    // Crear carpetas necesarias
+    // Railway: usar /tmp que SI tiene permisos de escritura
+    $tmpBase = sys_get_temp_dir() . '/lensware';
+    
+    define('APP_BASE', $tmpBase);
+    define('WATCH_FOLDER', $tmpBase . '/staging');
+    define('STAGING_FOLDER', $tmpBase . '/staging');
+    define('BACKUP_FOLDER', $tmpBase . '/backups');
+    define('CACHE_FILE', $tmpBase . '/cache/cache.json');
+    define('BACKUP_INDEX_FILE', $tmpBase . '/backups/backup_index.json');
+    define('BACKUP_STATE_FILE', $tmpBase . '/backups/state.json');
+    define('LOG_FILE', $tmpBase . '/logs/app.log');
+    
+    // Crear TODAS las carpetas necesarias
     $dirs = [
-        $dataPath,
-        $dataPath . '/staging',
-        $dataPath . '/backups',
-        $dataPath . '/cache',
-        $dataPath . '/logs'
+        $tmpBase,
+        $tmpBase . '/staging',
+        $tmpBase . '/backups',
+        $tmpBase . '/cache',
+        $tmpBase . '/logs'
     ];
-
     foreach ($dirs as $dir) {
         if (!is_dir($dir)) {
-            @mkdir($dir, 0777, true);
+            mkdir($dir, 0777, true);
         }
     }
 }
