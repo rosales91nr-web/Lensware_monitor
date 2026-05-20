@@ -468,15 +468,14 @@ try {
             );
             respondJson(['success' => true, 'data' => $result]);
 
-        case 'setup_dirs':
+case 'setup_dirs':
     $dirs = [STAGING_FOLDER, BACKUP_FOLDER];
     $result = [];
     foreach ($dirs as $dir) {
         if (!is_dir($dir)) {
             $result[$dir] = mkdir($dir, 0777, true) ? 'created' : 'failed';
         } else {
-            $result[$dir] = 'exists';
-            chmod($dir, 0777);
+            $result[$dir] = 'already_exists';
         }
     }
     respondJson(['success' => true, 'directories' => $result]);
