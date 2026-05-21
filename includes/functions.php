@@ -116,8 +116,8 @@ function isBackupFile(string $filepath): bool {
 /** Nombre legible del CSV (sin prefijo BACKUP_fecha_). */
 function displayFilename(string $filepath): string {
     $name = basename($filepath);
-    if (preg_match('/^BACKUP_\d{8}(?:_\d{4,6})?_(.+)$/i', $name, $m)) {
-        return $m[1];
+    while (preg_match('/^BACKUP_\d{8}(?:_\d{4,6})?_(.+)$/i', $name, $m)) {
+        $name = $m[1];
     }
     return $name;
 }
@@ -750,6 +750,10 @@ function hasDailyCSVBackup(string $filepath, DateTimeInterface $date): bool {
 function ensureCSVBackups(string $filepath): array {
     if (!file_exists($filepath)) {
         return ['success' => false, 'error' => 'Archivo no existe'];
+    }
+
+    if (isBackupFile($filepath)) {
+        return ['success' => true, 'dates' => [], 'created' => [], 'replaced' => [], 'error' => null];
     }
 
     $dir = BACKUP_FOLDER;
