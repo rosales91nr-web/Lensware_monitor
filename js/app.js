@@ -684,7 +684,7 @@ function renderCharts(stats) {
         skipIfEmpty: false,
     });
 
-    const devEntries = Object.entries(stats.por_device || {}).slice(0, 10);
+    const devEntries = Object.entries(stats.por_device || {}).sort((a, b) => b[1] - a[1]);
     if (devEntries.length) {
         createAppChart('chart-devices', 'devices', {
             labels: devEntries.map(([k]) => k),
