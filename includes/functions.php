@@ -747,42 +747,47 @@ function hasDailyCSVBackup(string $filepath, DateTimeInterface $date): bool {
     return file_exists($dailyFile);
 }
 
-function ensureCSVBackups(string $filepath): void {
-    if (!file_exists($filepath)) return;
+function ensureCSVBackups(string $filepath): array {
+    if (!file_exists($filepath)) {
+        return ['success' => false, 'error' => 'Archivo no existe'];
+    }
 
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) {
         if (!@mkdir($dir, 0777, true)) {
             logMessage("No se pudo crear BACKUP_FOLDER: $dir", 'error');
-            return;
+            return ['success' => false, 'error' => 'No se pudo crear BACKUP_FOLDER'];
         }
     }
     if (!is_writable($dir)) {
         logMessage("BACKUP_FOLDER no tiene permisos de escritura: $dir", 'error');
-        return;
+        return ['success' => false, 'error' => 'BACKUP_FOLDER sin permisos de escritura'];
     }
 
-    $now    = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
-    $csvMts = filemtime($filepath);
-
-    $lastBackupTs = getLastBackupTimestamp();
-    if ($csvMts > $lastBackupTs) {
-        backupCSV($filepath);
-        saveLastBackupTimestamp($csvMts);
+    $sync = syncProductionDateBackupsFromCsv($filepath);
+    if (!$sync['success']) {
+        if (function_exists('logMessage')) {
+            logMessage('ensureCSVBackups: ' . ($sync['error'] ?? 'error desconocido'), 'error');
+        }
     }
 
-    if ($now->format('Hi') >= '2355' && $now->format('Hi') <= '2359' && !hasDailyCSVBackup($filepath, $now)) {
-        backupCSV($filepath, $now->format('Ymd_2359'));
+    $now = new DateTimeImmutable('now', new DateTimeZone('America/Costa_Rica'));
+    if ($now->format('Hi') >= '2355' && $now->format('Hi') <= '2359') {
+        finalizeDailyBackups($filepath);
     }
+
+    return $sync;
 }
 
-function backupCSV(string $filepath, ?string $timestamp = null): void {
-    if (!file_exists($filepath)) return;
+function backupCSV(string $filepath, ?string $timestamp = null): bool {
+    if (!file_exists($filepath)) {
+        return false;
+    }
     $dir = BACKUP_FOLDER;
     if (!is_dir($dir)) {
         if (!@mkdir($dir, 0777, true)) {
             logMessage("backupCSV: no se pudo crear directorio $dir", 'error');
-            return;
+            return false;
         }
     }
     $stamp = $timestamp ?? date('Ymd_His');
@@ -790,15 +795,205 @@ function backupCSV(string $filepath, ?string $timestamp = null): void {
 
     if (file_exists($dest)) {
         logMessage("Backup ya existe, omitido: " . basename($dest));
-        return;
+        return false;
     }
 
     if (!copy($filepath, $dest)) {
         logMessage("backupCSV: falló copy() hacia $dest", 'error');
-        return;
+        return false;
     }
 
     logMessage("Respaldo creado: " . basename($dest));
+    return true;
+}
+
+function splitSourceCsvByProductionDate(string $filepath): ?array {
+    if (!is_file($filepath)) {
+        return null;
+    }
+
+    $raw = file_get_contents($filepath);
+    if ($raw === false) {
+        return null;
+    }
+
+    $raw = ltrim($raw, "\xEF\xBB\xBF");
+    $lines = preg_split('/\r\n|\n|\r/', trim($raw));
+    if (count($lines) < 2) {
+        return null;
+    }
+
+    $delimiters = ["\t", ";", ",", "|"];
+    $delimiter  = null;
+    $maxCount   = 0;
+    foreach ($delimiters as $d) {
+        $count = substr_count($lines[0], $d);
+        if ($count > $maxCount) {
+            $maxCount  = $count;
+            $delimiter = $d;
+        }
+    }
+    if (!$delimiter) {
+        return null;
+    }
+
+    $header = array_map('trim', str_getcsv($lines[0], $delimiter));
+    if (end($header) === '') {
+        array_pop($header);
+    }
+
+    $dateIdx = array_search('Date', $header, true);
+    if ($dateIdx === false) {
+        return null;
+    }
+
+    $byDate = [];
+    for ($i = 1; $i < count($lines); $i++) {
+        $line = rtrim($lines[$i], "\r\n;");
+        if ($line === '') {
+            continue;
+        }
+        $cols = str_getcsv($line, $delimiter);
+        if (count($cols) <= $dateIdx) {
+            continue;
+        }
+        $prodDate = normalizeRecordDate(trim($cols[$dateIdx] ?? ''));
+        if ($prodDate === null) {
+            continue;
+        }
+        $byDate[$prodDate][] = $line;
+    }
+
+    if ($byDate === []) {
+        return null;
+    }
+
+    krsort($byDate);
+    return [
+        'header_line' => $lines[0],
+        'delimiter'   => $delimiter,
+        'by_date'     => $byDate,
+    ];
+}
+
+function removeBackupsForProductionDate(string $productionDate): int {
+    if (!is_dir(BACKUP_FOLDER)) {
+        return 0;
+    }
+    $deleted = 0;
+    $compact = str_replace('-', '', $productionDate);
+    foreach (glob(BACKUP_FOLDER . '/BACKUP_' . $compact . '_*.csv') ?: [] as $file) {
+        if (@unlink($file)) {
+            $deleted++;
+        }
+    }
+    return $deleted;
+}
+
+function writeDailyBackupCsv(string $destPath, string $headerLine, array $dataLines): bool {
+    $content = "\xEF\xBB\xBF" . $headerLine . "\r\n" . implode("\r\n", $dataLines) . "\r\n";
+    $dir = dirname($destPath);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0777, true);
+    }
+    return file_put_contents($destPath, $content, LOCK_EX) !== false;
+}
+
+function syncProductionDateBackupsFromCsv(string $sourcePath): array {
+    $result = [
+        'success'  => false,
+        'created'  => [],
+        'replaced' => [],
+        'dates'    => [],
+        'error'    => null,
+    ];
+
+    if (!is_file($sourcePath)) {
+        $result['error'] = 'Archivo no encontrado';
+        return $result;
+    }
+
+    if (!is_dir(BACKUP_FOLDER)) {
+        @mkdir(BACKUP_FOLDER, 0777, true);
+    }
+    if (!is_writable(BACKUP_FOLDER)) {
+        $result['error'] = 'Sin permisos de escritura en backups';
+        return $result;
+    }
+
+    $split = splitSourceCsvByProductionDate($sourcePath);
+    if (!$split) {
+        $result['error'] = 'No se detectaron fechas de producción en el CSV';
+        return $result;
+    }
+
+    $basename = basename($sourcePath);
+    foreach ($split['by_date'] as $prodDate => $lines) {
+        if ($lines === []) {
+            continue;
+        }
+
+        $existing = glob(BACKUP_FOLDER . '/BACKUP_' . str_replace('-', '', $prodDate) . '_*.csv') ?: [];
+        $hadBackup = count($existing) > 0;
+        removeBackupsForProductionDate($prodDate);
+
+        $compact  = str_replace('-', '', $prodDate);
+        $destName = 'BACKUP_' . $compact . '_2359_' . $basename;
+        $destPath = BACKUP_FOLDER . '/' . $destName;
+
+        if (!writeDailyBackupCsv($destPath, $split['header_line'], $lines)) {
+            logMessage("No se pudo escribir respaldo diario: $destName", 'error');
+            continue;
+        }
+
+        $result['dates'][] = $prodDate;
+        if ($hadBackup) {
+            $result['replaced'][] = $prodDate;
+        } else {
+            $result['created'][] = $prodDate;
+        }
+    }
+
+    $result['success'] = $result['dates'] !== [];
+    return $result;
+}
+
+function hasDailyBackupForDate(string $dateYmd, string $sourceBasename): bool {
+    if (!is_dir(BACKUP_FOLDER)) {
+        return false;
+    }
+    $pattern = BACKUP_FOLDER . '/BACKUP_' . $dateYmd . '_2359_' . $sourceBasename;
+    return is_file($pattern);
+}
+
+function finalizeDailyBackups(?string $sourceFile = null): array {
+    $tz   = new DateTimeZone('America/Costa_Rica');
+    $now  = new DateTimeImmutable('now', $tz);
+    $done = [];
+
+    $source = $sourceFile ?: (function_exists('findLatestCSV') ? findLatestCSV() : null);
+    if (!$source || !is_file($source)) {
+        return $done;
+    }
+
+    $basename = basename($source);
+    $targets  = [$now->format('Y-m-d')];
+    if ($now->format('Hi') < '1200') {
+        $targets[] = $now->modify('-1 day')->format('Y-m-d');
+    }
+
+    foreach (array_unique($targets) as $dateYmd) {
+        $compact = str_replace('-', '', $dateYmd);
+        if (hasDailyBackupForDate($compact, $basename)) {
+            continue;
+        }
+        if (backupCSV($source, $compact . '_2359')) {
+            $done[] = $compact . '_2359';
+            logMessage("Respaldo diario histórico: $dateYmd");
+        }
+    }
+
+    return $done;
 }
 
 function listBackups(): array {
@@ -1315,14 +1510,14 @@ function syncLiveData(bool $forceRefresh = false): array {
     
     saveCache($payload);
     
-    // Asegurar que se crea un backup
-    ensureCSVBackups($latest);
+    $backupSync = ensureCSVBackups($latest);
     
     return [
         'success' => true,
         'records' => count($payload['records']),
-        'source' => basename($latest),
-        'message' => 'Datos sincronizados correctamente'
+        'source_file' => basename($latest),
+        'data_source' => isBackupFile($latest) ? 'backup' : 'upload',
+        'backup_sync' => $backupSync,
     ];
 }
 
