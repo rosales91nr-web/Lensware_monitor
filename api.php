@@ -42,6 +42,35 @@ function respondJson(array $data, int $statusCode = 200): void
     exit;
 }
 
+function parseMultipartFormFile(string $rawBody, string $contentType, string $fieldName = 'csv_file'): ?array
+{
+    if (!str_contains($contentType, 'multipart/form-data')) {
+        return null;
+    }
+    if (!preg_match('/boundary=(.*)$/', $contentType, $m)) {
+        return null;
+    }
+    $boundary = '--' . trim(trim($m[1]), '"');
+    $parts = explode($boundary, $rawBody);
+    foreach ($parts as $part) {
+        $part = ltrim($part, "\r\n");
+        if ($part === '' || $part === '--') {
+            continue;
+        }
+        $headerEnd = strpos($part, "\r\n\r\n");
+        if ($headerEnd === false) {
+            continue;
+        }
+        $headers = substr($part, 0, $headerEnd);
+        $body = substr($part, $headerEnd + 4);
+        $body = preg_replace('/\r\n--$/', '', $body);
+        if (preg_match('/Content-Disposition:\s*form-data;.*name="' . preg_quote($fieldName, '/') . '";.*filename="([^"]*)"/i', $headers, $hs)) {
+            return ['filename' => $hs[1], 'content' => $body];
+        }
+    }
+    return null;
+}
+
 require_once __DIR__ . '/config.php';
 
 if (!function_exists('processCSV')) {
@@ -413,6 +442,16 @@ try {
                 if ($uploadError === UPLOAD_ERR_INI_SIZE && $rawBody !== '' && $origName !== '') {
                     $saved = @file_put_contents($dest, $rawBody, LOCK_EX) !== false;
                 }
+
+                if (!$saved && $rawBody !== '' && isset($_SERVER['CONTENT_TYPE'])) {
+                    $parsed = parseMultipartFormFile($rawBody, $_SERVER['CONTENT_TYPE'], 'csv_file');
+                    if ($parsed && $parsed['content'] !== '') {
+                        $origName = basename($parsed['filename'] ?: $origName);
+                        $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
+                        $saved = @file_put_contents($dest, $parsed['content'], LOCK_EX) !== false;
+                    }
+                }
+
                 if (!$saved) {
                     $message = 'Upload error: ' . $uploadError;
                     if ($uploadError === UPLOAD_ERR_INI_SIZE) {
