@@ -416,7 +416,7 @@ try {
                 if (!$saved) {
                     $message = 'Upload error: ' . $uploadError;
                     if ($uploadError === UPLOAD_ERR_INI_SIZE) {
-                        $message .= ' (UPLOAD_ERR_INI_SIZE). Ajuste upload_max_filesize/post_max_size en php.ini o la configuración del servidor.';
+                        $message .= ' (UPLOAD_ERR_INI_SIZE). Ajuste upload_max_filesize/post_max_size en php.ini o la configuración del servidor, o use el envío por fragmentos si el archivo es mayor a 1MB.';
                     }
                     respondJson([
                         'success'             => false,
@@ -503,7 +503,107 @@ respondJson([
 ]);
 
 break;
-        
+
+        case 'upload_csv_chunk':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                respondJson(['success' => false, 'error' => 'Método no permitido'], 405);
+            }
+            // Aumentar límites para cargas por fragmentos.
+            @ini_set('upload_max_filesize', '100M');
+            @ini_set('post_max_size', '100M');
+            @ini_set('memory_limit', '512M');
+            @ini_set('max_input_time', '300');
+            @ini_set('max_execution_time', '300');
+            @set_time_limit(300);
+
+            if (UPLOAD_SECRET !== '') {
+                $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
+                if ($secret !== UPLOAD_SECRET) {
+                    respondJson(['success' => false, 'error' => 'No autorizado'], 403);
+                }
+            }
+
+            $origName = basename(trim($_POST['filename'] ?? $_GET['filename'] ?? ''));
+            $chunkIndex = isset($_POST['chunk_index']) ? (int) $_POST['chunk_index'] : null;
+            $chunkCount = isset($_POST['chunk_count']) ? (int) $_POST['chunk_count'] : null;
+            $chunkSize  = isset($_POST['chunk_size']) ? (int) $_POST['chunk_size'] : null;
+
+            if ($origName === '' || $chunkIndex === null || $chunkCount === null) {
+                respondJson(['success' => false, 'error' => 'Parámetros de chunk incompletos'], 400);
+            }
+
+            $validPrefix = false;
+            foreach (CSV_PREFIXES as $prefix) {
+                if (str_starts_with($origName, $prefix)) {
+                    $validPrefix = true;
+                    break;
+                }
+            }
+            if (!$validPrefix || strtolower(pathinfo($origName, PATHINFO_EXTENSION)) !== 'csv') {
+                respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
+            }
+
+            $uploadDir = defined('STAGING_FOLDER') && STAGING_FOLDER ? STAGING_FOLDER : sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'lensware_uploads';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+                @chmod($uploadDir, 0777);
+            }
+
+            $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
+            if ($chunkIndex === 0 && file_exists($dest)) {
+                @unlink($dest);
+            }
+
+            $chunkData = '';
+            if (!empty($_FILES['chunk']['tmp_name']) && is_uploaded_file($_FILES['chunk']['tmp_name'])) {
+                $chunkData = @file_get_contents($_FILES['chunk']['tmp_name']);
+            }
+            if ($chunkData === '' || $chunkData === false) {
+                $chunkData = @file_get_contents('php://input');
+            }
+            if ($chunkData === false || $chunkData === '') {
+                respondJson(['success' => false, 'error' => 'No se recibió el fragmento del archivo'], 400);
+            }
+
+            $saved = @file_put_contents($dest, $chunkData, FILE_APPEND | LOCK_EX) !== false;
+            if (!$saved) {
+                respondJson(['success' => false, 'error' => 'No se pudo almacenar el fragmento', 'target' => $dest], 500);
+            }
+
+            if ($chunkIndex === $chunkCount - 1) {
+                $backupSync = ensureCSVBackups($dest);
+                rebuildBackupIndex();
+                $payload = buildLiveDataPayload($dest);
+                $cached = $payload && saveCache($payload);
+                $msg = "CSV importado: $origName";
+                if (!empty($backupSync['dates'])) {
+                    $msg .= ' · Respaldos: ' . count($backupSync['dates']) . ' día(s)';
+                    if (!empty($backupSync['replaced'])) {
+                        $msg .= ' (' . count($backupSync['replaced']) . ' reemplazado(s))';
+                    }
+                }
+                respondJson([
+                    'success'     => true,
+                    'message'     => $msg,
+                    'cached'      => $cached,
+                    'records'     => $cached ? count($payload['records']) : 0,
+                    'backup_sync' => $backupSync,
+                    'upload_path' => $dest,
+                    'chunk'       => $chunkIndex + 1,
+                    'chunk_count' => $chunkCount,
+                ]);
+                break;
+            }
+
+            respondJson([
+                'success'      => true,
+                'message'      => 'Fragmento recibido',
+                'chunk_index'  => $chunkIndex,
+                'chunk_count'  => $chunkCount,
+                'upload_path'  => $dest,
+            ]);
+            break;
+
         case 'export':
             $cache = readCache();
             if (!$cache || empty($cache['records'])) {
