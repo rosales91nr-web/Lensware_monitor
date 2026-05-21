@@ -356,12 +356,13 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 respondJson(['success' => false, 'error' => 'Método no permitido'], 405);
             }
-            // Aumentar límites para cargas de CSV mayores a 2 MB en entornos con configuración restringida.
-            @ini_set('upload_max_filesize', '50M');
-            @ini_set('post_max_size', '50M');
+            // Aumentar límites para cargas de CSV más grandes.
+            @ini_set('upload_max_filesize', '100M');
+            @ini_set('post_max_size', '100M');
             @ini_set('memory_limit', '512M');
             @ini_set('max_input_time', '300');
             @ini_set('max_execution_time', '300');
+            @set_time_limit(300);
 
             if (UPLOAD_SECRET !== '') {
                 $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
@@ -413,9 +414,14 @@ try {
                     $saved = @file_put_contents($dest, $rawBody, LOCK_EX) !== false;
                 }
                 if (!$saved) {
+                    $message = 'Upload error: ' . $uploadError;
+                    if ($uploadError === UPLOAD_ERR_INI_SIZE) {
+                        $message .= ' (UPLOAD_ERR_INI_SIZE). Ajuste upload_max_filesize/post_max_size en php.ini o la configuración del servidor.';
+                    }
                     respondJson([
                         'success'             => false,
-                        'error'               => 'Upload error: ' . $uploadError,
+                        'error'               => $message,
+                        'upload_error'        => $uploadError,
                         'tmp_name'            => $tmpName,
                         'dest'                => $dest,
                         'tmp_exists'          => file_exists($tmpName),
