@@ -381,6 +381,7 @@ $tempDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'lensware_uploads';
 
 if (!is_dir($tempDir)) {
     mkdir($tempDir, 0777, true);
+    @chmod($tempDir, 0777);
 }
 
 $dest = $tempDir . DIRECTORY_SEPARATOR . $origName;
@@ -389,15 +390,24 @@ if (file_exists($dest)) {
     @unlink($dest);
 }
 
-if (!move_uploaded_file($file['tmp_name'], $dest)) {
+$saved = false;
+if (is_uploaded_file($file['tmp_name'])) {
+    $saved = move_uploaded_file($file['tmp_name'], $dest);
+}
+if (!$saved && file_exists($file['tmp_name'])) {
+    $saved = copy($file['tmp_name'], $dest);
+}
+
+if (!$saved) {
     respondJson([
-        'success'   => false,
-        'error'     => 'Error al guardar archivo temporal',
-        'tmp_name'  => $file['tmp_name'],
-        'dest'      => $dest,
-        'tmp_exists'=> file_exists($file['tmp_name']),
-        'temp_dir'  => sys_get_temp_dir(),
-        'writable'  => is_writable($tempDir)
+        'success'      => false,
+        'error'        => 'Error al guardar archivo temporal',
+        'tmp_name'     => $file['tmp_name'],
+        'dest'         => $dest,
+        'tmp_exists'   => file_exists($file['tmp_name']),
+        'tmp_readable' => is_readable($file['tmp_name']),
+        'temp_dir'     => sys_get_temp_dir(),
+        'writable'     => is_writable($tempDir)
     ], 500);
 }
 
