@@ -12,8 +12,8 @@ $isRailway = getenv('RAILWAY_ENVIRONMENT') === 'production' ||
              getenv('APP_ENV') === 'railway';
 
 if ($isRailway) {
-    // Railway: usar ruta absoluta /tmp/lensware para evitar inconsistencias de permisos
-    $tmpBase = '/tmp/lensware';
+    // Railway: usar /tmp
+    $tmpBase = sys_get_temp_dir() . '/lensware';
     if (!defined('BACKUP_STATE_FILE')) {
         define('BACKUP_STATE_FILE', $tmpBase . '/backups/state.json');
     }

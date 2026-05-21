@@ -17,8 +17,8 @@ if (file_exists(__DIR__ . '/.env')) {
 // CONFIGURACIÓN PARA RAILWAY (Linux)
 // ─────────────────────────────────────────────────────
 if ($isRailway) {
-    // Railway: usar ruta absoluta /tmp/lensware para evitar problemas de permisos
-    $tmpBase = '/tmp/lensware';
+    // Railway: usar /tmp que SI tiene permisos de escritura
+    $tmpBase = sys_get_temp_dir() . '/lensware';
     
     define('APP_BASE', $tmpBase);
     define('WATCH_FOLDER', $tmpBase . '/staging');
@@ -29,19 +29,18 @@ if ($isRailway) {
     define('BACKUP_STATE_FILE', $tmpBase . '/backups/state.json');
     define('LOG_FILE', $tmpBase . '/logs/app.log');
     
-    // Crear todas las carpetas necesarias con permisos de escritura
+    // Crear TODAS las carpetas necesarias
     $dirs = [
-        '/tmp/lensware',
-        '/tmp/lensware/staging',
-        '/tmp/lensware/backups',
-        '/tmp/lensware/cache',
-        '/tmp/lensware/logs'
+        $tmpBase,
+        $tmpBase . '/staging',
+        $tmpBase . '/backups',
+        $tmpBase . '/cache',
+        $tmpBase . '/logs'
     ];
     foreach ($dirs as $dir) {
         if (!is_dir($dir)) {
             mkdir($dir, 0777, true);
         }
-        @chmod($dir, 0777);
     }
 }
 // ─────────────────────────────────────────────────────
