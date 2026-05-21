@@ -17,25 +17,29 @@ if (file_exists(__DIR__ . '/.env')) {
 // CONFIGURACIÓN PARA RAILWAY (Linux)
 // ─────────────────────────────────────────────────────
 if ($isRailway) {
-    // Railway: usar ruta absoluta /tmp/lensware para evitar problemas de permisos
-    $tmpBase = '/tmp/lensware';
-    
+    // Railway: usar rutas configurables para soportar volúmenes persistentes
+    $tmpBase = getenv('TMP_BASE') ?: '/tmp/lensware';
+    $backupPath = getenv('BACKUP_FOLDER') ?: '/var/www/html/backups';
+    $cachePath  = getenv('CACHE_FILE') ?: $tmpBase . '/cache/cache.json';
+    $logPath    = getenv('LOG_FILE') ?: $tmpBase . '/logs/app.log';
+
     define('APP_BASE', $tmpBase);
-    define('WATCH_FOLDER', $tmpBase . '/staging');
-    define('STAGING_FOLDER', $tmpBase . '/staging');
-    define('BACKUP_FOLDER', $tmpBase . '/backups');
-    define('CACHE_FILE', $tmpBase . '/cache/cache.json');
-    define('BACKUP_INDEX_FILE', $tmpBase . '/backups/backup_index.json');
-    define('BACKUP_STATE_FILE', $tmpBase . '/backups/state.json');
-    define('LOG_FILE', $tmpBase . '/logs/app.log');
-    
+    define('WATCH_FOLDER', getenv('WATCH_FOLDER') ?: $tmpBase . '/staging');
+    define('STAGING_FOLDER', getenv('STAGING_FOLDER') ?: $tmpBase . '/staging');
+    define('BACKUP_FOLDER', $backupPath);
+    define('CACHE_FILE', $cachePath);
+    define('BACKUP_INDEX_FILE', BACKUP_FOLDER . '/backup_index.json');
+    define('BACKUP_STATE_FILE', BACKUP_FOLDER . '/state.json');
+    define('LOG_FILE', $logPath);
+
     // Crear todas las carpetas necesarias con permisos de escritura
     $dirs = [
-        '/tmp/lensware',
-        '/tmp/lensware/staging',
-        '/tmp/lensware/backups',
-        '/tmp/lensware/cache',
-        '/tmp/lensware/logs'
+        $tmpBase,
+        WATCH_FOLDER,
+        STAGING_FOLDER,
+        BACKUP_FOLDER,
+        dirname(CACHE_FILE),
+        dirname(LOG_FILE),
     ];
     foreach ($dirs as $dir) {
         if (!is_dir($dir)) {
