@@ -362,10 +362,18 @@ try {
                     respondJson(['success' => false, 'error' => 'No autorizado'], 403);
                 }
             }
-            if (empty($_FILES['csv_file'])) {
+            $file = $_FILES['csv_file'] ?? null;
+            $rawBody = '';
+            $rawName = trim($_SERVER['HTTP_X_UPLOAD_NAME'] ?? $_GET['name'] ?? $_POST['filename'] ?? $_POST['name'] ?? '');
+            if (empty($file) && ($rawBody = @file_get_contents('php://input')) !== false && $rawBody !== '' && $rawName !== '') {
+                $origName = basename($rawName);
+                $file = ['name' => $origName, 'tmp_name' => '', 'error' => UPLOAD_ERR_OK];
+            }
+
+            if (empty($file)) {
                 respondJson(['success' => false, 'error' => 'No se recibió archivo'], 400);
             }
-            $file     = $_FILES['csv_file'];
+
             $origName = basename($file['name']);
             $validPrefix = false;
             foreach (CSV_PREFIXES as $prefix) {
@@ -377,50 +385,57 @@ try {
             if (!$validPrefix || strtolower(pathinfo($origName, PATHINFO_EXTENSION)) !== 'csv') {
                 respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
             }
-$tempDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'lensware_uploads';
 
-if (!is_dir($tempDir)) {
-    mkdir($tempDir, 0777, true);
-    @chmod($tempDir, 0777);
-}
+            $uploadDir = defined('STAGING_FOLDER') && STAGING_FOLDER ? STAGING_FOLDER : sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'lensware_uploads';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+                @chmod($uploadDir, 0777);
+            }
 
-$dest = $tempDir . DIRECTORY_SEPARATOR . $origName;
+            $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
+            if (file_exists($dest)) {
+                @unlink($dest);
+            }
 
-if (file_exists($dest)) {
-    @unlink($dest);
-}
+            $uploadError = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+            $tmpName = $file['tmp_name'] ?? '';
+            $saved = false;
 
-$uploadError = $file['error'] ?? UPLOAD_ERR_NO_FILE;
-$tmpName = $file['tmp_name'] ?? '';
-$saved = false;
+            if ($uploadError !== UPLOAD_ERR_OK) {
+                respondJson([
+                    'success'           => false,
+                    'error'             => 'Upload error: ' . $uploadError,
+                    'tmp_name'          => $tmpName,
+                    'dest'              => $dest,
+                    'tmp_exists'        => file_exists($tmpName),
+                    'tmp_readable'      => is_readable($tmpName),
+                    'temp_dir'          => sys_get_temp_dir(),
+                    'upload_tmp_dir'    => ini_get('upload_tmp_dir'),
+                    'post_max_size'     => ini_get('post_max_size'),
+                    'upload_max_filesize' => ini_get('upload_max_filesize'),
+                    'writable'          => is_writable($uploadDir),
+                    'request_content_type' => $_SERVER['CONTENT_TYPE'] ?? null,
+                ], 500);
+            }
 
-if ($uploadError !== UPLOAD_ERR_OK) {
-    respondJson([
-        'success'      => false,
-        'error'        => 'Upload error: ' . $uploadError,
-        'tmp_name'     => $tmpName,
-        'dest'         => $dest,
-        'tmp_exists'   => file_exists($tmpName),
-        'tmp_readable' => is_readable($tmpName),
-        'temp_dir'     => sys_get_temp_dir(),
-        'writable'     => is_writable($tempDir)
-    ], 500);
-}
+            if ($tmpName !== '' && file_exists($tmpName) && is_uploaded_file($tmpName)) {
+                $saved = move_uploaded_file($tmpName, $dest);
+            }
 
-if ($tmpName !== '' && file_exists($tmpName) && is_uploaded_file($tmpName)) {
-    $saved = move_uploaded_file($tmpName, $dest);
-}
+            if (!$saved && $tmpName !== '' && file_exists($tmpName) && is_readable($tmpName)) {
+                $saved = copy($tmpName, $dest);
+            }
 
-if (!$saved && $tmpName !== '' && file_exists($tmpName) && is_readable($tmpName)) {
-    $saved = copy($tmpName, $dest);
-}
+            if (!$saved && $tmpName !== '' && file_exists($tmpName) && is_readable($tmpName)) {
+                $content = @file_get_contents($tmpName);
+                if ($content !== false) {
+                    $saved = @file_put_contents($dest, $content, LOCK_EX) !== false;
+                }
+            }
 
-if (!$saved && $tmpName !== '' && file_exists($tmpName) && is_readable($tmpName)) {
-    $content = @file_get_contents($tmpName);
-    if ($content !== false) {
-        $saved = @file_put_contents($dest, $content, LOCK_EX) !== false;
-    }
-}
+            if (!$saved && $rawBody !== '' && $origName !== '') {
+                $saved = @file_put_contents($dest, $rawBody, LOCK_EX) !== false;
+            }
 
 if (!$saved) {
     respondJson([
