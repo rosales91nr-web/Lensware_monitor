@@ -561,6 +561,42 @@ case 'setup_dirs':
     respondJson(['success' => true, 'results' => $results]);
     break;
 
+        case 'fix_permissions_shell':
+    $basePath = '/tmp/lensware';
+    $results = [];
+    
+    // Intentar con comandos shell
+    $commands = [
+        "chmod 777 $basePath",
+        "chmod 777 $basePath/staging",
+        "chmod 777 $basePath/backups", 
+        "chmod 777 $basePath/cache",
+        "chmod 777 $basePath/logs",
+        "chmod -R 777 $basePath/* 2>/dev/null"
+    ];
+    
+    foreach ($commands as $cmd) {
+        $output = [];
+        $returnCode = 0;
+        exec($cmd . " 2>&1", $output, $returnCode);
+        $results[$cmd] = [
+            'code' => $returnCode,
+            'output' => implode("\n", $output)
+        ];
+    }
+    
+    // Verificar resultados
+    $results['final_status'] = [
+        'base_writable' => is_writable($basePath),
+        'staging_writable' => is_writable($basePath . '/staging'),
+        'backups_writable' => is_writable($basePath . '/backups'),
+        'cache_writable' => is_writable($basePath . '/cache'),
+        'logs_writable' => is_writable($basePath . '/logs'),
+    ];
+    
+    respondJson(['success' => true, 'results' => $results]);
+    break;
+
         default:
             respondJson(['success' => false, 'error' => 'Acción no válida'], 400);
     }
