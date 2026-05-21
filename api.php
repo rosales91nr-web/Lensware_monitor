@@ -534,6 +534,33 @@ case 'setup_dirs':
     respondJson(['success' => true, 'paths' => $result]);
     break;
 
+        case 'fix_permissions_recursive':
+    $basePath = '/tmp/lensware';
+    $results = [];
+    
+    // Cambiar propietario y permisos
+    $commands = [
+        "chmod -R 777 " . escapeshellarg($basePath),
+        "chown -R www-data:www-data " . escapeshellarg($basePath) . " 2>/dev/null || true"
+    ];
+    
+    foreach ($commands as $cmd) {
+        exec($cmd, $output, $returnCode);
+        $results[$cmd] = $returnCode === 0 ? 'success' : 'failed';
+    }
+    
+    // Verificar después del cambio
+    $results['after_check'] = [
+        'base_writable' => is_writable($basePath),
+        'backups_writable' => is_writable($basePath . '/backups'),
+        'cache_writable' => is_writable($basePath . '/cache'),
+        'logs_writable' => is_writable($basePath . '/logs'),
+        'staging_writable' => is_writable($basePath . '/staging'),
+    ];
+    
+    respondJson(['success' => true, 'results' => $results]);
+    break;
+
         default:
             respondJson(['success' => false, 'error' => 'Acción no válida'], 400);
     }
