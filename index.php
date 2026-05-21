@@ -865,8 +865,10 @@ function togglePwd() {
             justify-content: center;
             padding: 20px;
         }
-        .modal.active { display: flex; }
+        .modal.active { display: flex; z-index: 1100; }
         .modal-content {
+            position: relative;
+            z-index: 1101;
             background: white;
             border-radius: 20px;
             width: 100%;
@@ -1735,7 +1737,7 @@ function togglePwd() {
     </div>
 </div>
 <div id="modal-detail" class="modal">
-    <div class="modal-content">
+    <div class="modal-content modal-large">
         <div class="modal-header">
             <h2 id="detail-title">Detalle</h2>
             <button class="modal-close">&times;</button>
