@@ -390,24 +390,52 @@ if (file_exists($dest)) {
     @unlink($dest);
 }
 
+$uploadError = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+$tmpName = $file['tmp_name'] ?? '';
 $saved = false;
-if (is_uploaded_file($file['tmp_name'])) {
-    $saved = move_uploaded_file($file['tmp_name'], $dest);
+
+if ($uploadError !== UPLOAD_ERR_OK) {
+    respondJson([
+        'success'      => false,
+        'error'        => 'Upload error: ' . $uploadError,
+        'tmp_name'     => $tmpName,
+        'dest'         => $dest,
+        'tmp_exists'   => file_exists($tmpName),
+        'tmp_readable' => is_readable($tmpName),
+        'temp_dir'     => sys_get_temp_dir(),
+        'writable'     => is_writable($tempDir)
+    ], 500);
 }
-if (!$saved && file_exists($file['tmp_name'])) {
-    $saved = copy($file['tmp_name'], $dest);
+
+if ($tmpName !== '' && file_exists($tmpName) && is_uploaded_file($tmpName)) {
+    $saved = move_uploaded_file($tmpName, $dest);
+}
+
+if (!$saved && $tmpName !== '' && file_exists($tmpName) && is_readable($tmpName)) {
+    $saved = copy($tmpName, $dest);
+}
+
+if (!$saved && $tmpName !== '' && file_exists($tmpName) && is_readable($tmpName)) {
+    $content = @file_get_contents($tmpName);
+    if ($content !== false) {
+        $saved = @file_put_contents($dest, $content, LOCK_EX) !== false;
+    }
 }
 
 if (!$saved) {
     respondJson([
-        'success'      => false,
-        'error'        => 'Error al guardar archivo temporal',
-        'tmp_name'     => $file['tmp_name'],
-        'dest'         => $dest,
-        'tmp_exists'   => file_exists($file['tmp_name']),
-        'tmp_readable' => is_readable($file['tmp_name']),
-        'temp_dir'     => sys_get_temp_dir(),
-        'writable'     => is_writable($tempDir)
+        'success'        => false,
+        'error'          => 'Error al guardar archivo temporal',
+        'upload_error'   => $uploadError,
+        'tmp_name'       => $tmpName,
+        'dest'           => $dest,
+        'tmp_exists'     => file_exists($tmpName),
+        'tmp_readable'   => is_readable($tmpName),
+        'tmp_size'       => $tmpName && file_exists($tmpName) ? @filesize($tmpName) : null,
+        'temp_dir'       => sys_get_temp_dir(),
+        'writable'       => is_writable($tempDir),
+        'is_uploaded'    => $tmpName !== '' ? is_uploaded_file($tmpName) : false,
+        'dest_parent_ok' => is_dir(dirname($dest)) && is_writable(dirname($dest))
     ], 500);
 }
 
