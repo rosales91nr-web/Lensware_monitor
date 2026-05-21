@@ -402,9 +402,29 @@ try {
             $file = $_FILES['csv_file'] ?? null;
             $rawBody = '';
             $rawName = trim($_SERVER['HTTP_X_UPLOAD_NAME'] ?? $_GET['name'] ?? $_POST['filename'] ?? $_POST['name'] ?? '');
-            if (empty($file) && ($rawBody = @file_get_contents('php://input')) !== false && $rawBody !== '' && $rawName !== '') {
+            if (($rawBody = @file_get_contents('php://input')) === false) {
+                $rawBody = '';
+            }
+
+            if (empty($file) && $rawBody !== '' && $rawName !== '') {
                 $origName = basename($rawName);
                 $file = ['name' => $origName, 'tmp_name' => '', 'error' => UPLOAD_ERR_OK];
+            }
+
+            if (empty($file)) {
+                if ($rawBody !== '') {
+                    if ($rawName !== '') {
+                        $origName = basename($rawName);
+                        $file = ['name' => $origName, 'tmp_name' => '', 'error' => UPLOAD_ERR_OK];
+                    } else {
+                        $parsed = parseMultipartFormFile($rawBody, $_SERVER['CONTENT_TYPE'] ?? '', 'csv_file');
+                        if ($parsed && $parsed['filename'] !== '') {
+                            $origName = basename($parsed['filename']);
+                            $rawBody = $parsed['content'];
+                            $file = ['name' => $origName, 'tmp_name' => '', 'error' => UPLOAD_ERR_OK];
+                        }
+                    }
+                }
             }
 
             if (empty($file)) {
@@ -443,12 +463,24 @@ try {
                     $saved = @file_put_contents($dest, $rawBody, LOCK_EX) !== false;
                 }
 
-                if (!$saved && $rawBody !== '' && isset($_SERVER['CONTENT_TYPE'])) {
-                    $parsed = parseMultipartFormFile($rawBody, $_SERVER['CONTENT_TYPE'], 'csv_file');
-                    if ($parsed && $parsed['content'] !== '') {
-                        $origName = basename($parsed['filename'] ?: $origName);
-                        $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
-                        $saved = @file_put_contents($dest, $parsed['content'], LOCK_EX) !== false;
+                if (!$saved && $rawBody !== '') {
+                    if ($origName === '') {
+                        $rawName = trim($_SERVER['HTTP_X_UPLOAD_NAME'] ?? $_GET['name'] ?? $_POST['filename'] ?? $_POST['name'] ?? '');
+                        if ($rawName !== '') {
+                            $origName = basename($rawName);
+                            $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
+                        }
+                    }
+                    if ($origName !== '' && isset($_SERVER['CONTENT_TYPE'])) {
+                        $parsed = parseMultipartFormFile($rawBody, $_SERVER['CONTENT_TYPE'], 'csv_file');
+                        if ($parsed && $parsed['content'] !== '') {
+                            $origName = basename($parsed['filename'] ?: $origName);
+                            $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
+                            $saved = @file_put_contents($dest, $parsed['content'], LOCK_EX) !== false;
+                        }
+                    }
+                    if (!$saved && $origName !== '') {
+                        $saved = @file_put_contents($dest, $rawBody, LOCK_EX) !== false;
                     }
                 }
 
