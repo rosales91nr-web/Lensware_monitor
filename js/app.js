@@ -67,6 +67,7 @@ let searchState = {
     query: '',
     data: null,
     allRecords: [],
+    historyRecords: [],
     debounceTimer: null,
 };
 
@@ -642,6 +643,7 @@ async function showJobHistoryModal(job) {
             body.innerHTML = `<p style="text-align:center;padding:40px;color:#94a3b8;">${escapeHtml(result.error || 'No se encontraron registros para esta orden.')}</p>`;
             return;
         }
+        searchState.historyRecords = result.data.sources?.flatMap(source => source.records || []) || [];
         body.innerHTML = renderJobHistoryModalHtml(result.data);
     } catch (e) {
         body.innerHTML = `<p style="text-align:center;padding:40px;color:#ef4444;">Error de conexión: ${escapeHtml(e.message)}</p>`;
@@ -1240,7 +1242,7 @@ function showDetail(job, date, time) {
         return;
     }
 
-    const pool = [...(appData.records || []), ...(searchState.allRecords || [])];
+    const pool = [...(appData.records || []), ...(searchState.allRecords || []), ...(searchState.historyRecords || [])];
     const rawBrea = pool.filter(r =>
         r.job === job && r.date_raw === date && r.time_raw === time && r.is_breakage
     );
