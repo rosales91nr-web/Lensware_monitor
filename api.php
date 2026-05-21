@@ -567,8 +567,30 @@ break;
                 ($dryRun ? ' [DRY-RUN]' : '')
             );
             respondJson(['success' => true, 'data' => $result]);
+            break;
 
-case 'setup_dirs':
+        case 'process_staging_csv':
+            $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_GET['secret'] ?? $_POST['secret'] ?? '';
+            if (UPLOAD_SECRET !== 'changeme' && $secret !== UPLOAD_SECRET) {
+                respondJson(['success' => false, 'error' => 'No autorizado'], 403);
+            }
+            $filename = basename($_GET['file'] ?? $_POST['file'] ?? '');
+            if ($filename === '') {
+                respondJson(['success' => false, 'error' => 'Parámetro file requerido'], 400);
+            }
+            $filepath = STAGING_FOLDER . DIRECTORY_SEPARATOR . $filename;
+            if (!file_exists($filepath)) {
+                respondJson(['success' => false, 'error' => 'Archivo no encontrado en staging'], 404);
+            }
+            $result = ensureCSVBackups($filepath);
+            if (!$result['success']) {
+                respondJson(['success' => false, 'error' => $result['error'] ?? 'Error al procesar CSV', 'details' => $result], 500);
+            }
+            rebuildBackupIndex();
+            respondJson(['success' => true, 'data' => $result]);
+            break;
+
+        case 'setup_dirs':
     $dirs = [STAGING_FOLDER, BACKUP_FOLDER];
     $result = [];
     foreach ($dirs as $dir) {

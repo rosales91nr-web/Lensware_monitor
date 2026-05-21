@@ -79,16 +79,29 @@ function lensCountFromRecord(array $r): int {
 // =============================================================================
 
 function findLatestCSV(): ?string {
-    $folder = WATCH_FOLDER;
-    if (!is_dir($folder)) return null;
-    $latest = null; $latestTs = 0;
-    foreach (CSV_PREFIXES as $prefix) {
-        foreach (array_merge(
-            glob($folder . '/' . $prefix . '*.csv') ?: [],
-            glob($folder . '/' . $prefix . '*.CSV') ?: []
-        ) as $file) {
-            $ts = filemtime($file);
-            if ($ts > $latestTs) { $latestTs = $ts; $latest = $file; }
+    $folders = [WATCH_FOLDER];
+    if (defined('STAGING_FOLDER') && STAGING_FOLDER && STAGING_FOLDER !== WATCH_FOLDER) {
+        $folders[] = STAGING_FOLDER;
+    }
+
+    $latest = null;
+    $latestTs = 0;
+    foreach ($folders as $folder) {
+        if (!is_dir($folder)) {
+            continue;
+        }
+
+        foreach (CSV_PREFIXES as $prefix) {
+            foreach (array_merge(
+                glob($folder . '/' . $prefix . '*.csv') ?: [],
+                glob($folder . '/' . $prefix . '*.CSV') ?: []
+            ) as $file) {
+                $ts = filemtime($file);
+                if ($ts > $latestTs) {
+                    $latestTs = $ts;
+                    $latest = $file;
+                }
+            }
         }
     }
     return $latest;
