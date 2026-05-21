@@ -1828,20 +1828,28 @@ function togglePwd() {
     }
 
     async function uploadCsvInChunks(file, secret) {
-        const CHUNK_SIZE = 1024 * 1024;
+        const CHUNK_SIZE = 256 * 1024;
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
         let result = null;
         for (let index = 0; index < totalChunks; index++) {
             const chunk = file.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
-            const formData = new FormData();
-            formData.append('filename', file.name);
-            formData.append('chunk_index', index);
-            formData.append('chunk_count', totalChunks);
-            formData.append('chunk_size', chunk.size);
-            formData.append('chunk', chunk);
-            if (secret && secret !== 'changeme') formData.append('secret', secret);
-            const headers = (secret && secret !== 'changeme') ? { 'X-Upload-Secret': secret } : {};
-            const response = await fetch('api.php?action=upload_csv_chunk', { method:'POST', headers, body: formData });
+            const headers = {
+                'Content-Type': 'application/octet-stream'
+            };
+            if (secret && secret !== 'changeme') {
+                headers['X-Upload-Secret'] = secret;
+            }
+            const params = new URLSearchParams({
+                filename: file.name,
+                chunk_index: String(index),
+                chunk_count: String(totalChunks),
+                chunk_size: String(chunk.size)
+            });
+            const response = await fetch(`api.php?action=upload_csv_chunk&${params.toString()}`, {
+                method: 'POST',
+                headers,
+                body: chunk
+            });
             result = await response.json();
             if (!response.ok || !result.success) {
                 throw new Error(result.error || 'Error al subir el archivo en fragmentos');

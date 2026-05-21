@@ -517,16 +517,16 @@ break;
             @set_time_limit(300);
 
             if (UPLOAD_SECRET !== '') {
-                $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
+                $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_GET['secret'] ?? '';
                 if ($secret !== UPLOAD_SECRET) {
                     respondJson(['success' => false, 'error' => 'No autorizado'], 403);
                 }
             }
 
-            $origName = basename(trim($_POST['filename'] ?? $_GET['filename'] ?? ''));
-            $chunkIndex = isset($_POST['chunk_index']) ? (int) $_POST['chunk_index'] : null;
-            $chunkCount = isset($_POST['chunk_count']) ? (int) $_POST['chunk_count'] : null;
-            $chunkSize  = isset($_POST['chunk_size']) ? (int) $_POST['chunk_size'] : null;
+            $origName = basename(trim($_GET['filename'] ?? ''));
+            $chunkIndex = isset($_GET['chunk_index']) ? (int) $_GET['chunk_index'] : null;
+            $chunkCount = isset($_GET['chunk_count']) ? (int) $_GET['chunk_count'] : null;
+            $chunkSize  = isset($_GET['chunk_size']) ? (int) $_GET['chunk_size'] : null;
 
             if ($origName === '' || $chunkIndex === null || $chunkCount === null) {
                 respondJson(['success' => false, 'error' => 'Parámetros de chunk incompletos'], 400);
@@ -554,13 +554,7 @@ break;
                 @unlink($dest);
             }
 
-            $chunkData = '';
-            if (!empty($_FILES['chunk']['tmp_name']) && is_uploaded_file($_FILES['chunk']['tmp_name'])) {
-                $chunkData = @file_get_contents($_FILES['chunk']['tmp_name']);
-            }
-            if ($chunkData === '' || $chunkData === false) {
-                $chunkData = @file_get_contents('php://input');
-            }
+            $chunkData = @file_get_contents('php://input');
             if ($chunkData === false || $chunkData === '') {
                 respondJson(['success' => false, 'error' => 'No se recibió el fragmento del archivo'], 400);
             }
