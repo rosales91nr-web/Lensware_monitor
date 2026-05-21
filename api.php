@@ -356,6 +356,13 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 respondJson(['success' => false, 'error' => 'Método no permitido'], 405);
             }
+            // Aumentar límites para cargas de CSV mayores a 2 MB en entornos con configuración restringida.
+            @ini_set('upload_max_filesize', '50M');
+            @ini_set('post_max_size', '50M');
+            @ini_set('memory_limit', '512M');
+            @ini_set('max_input_time', '300');
+            @ini_set('max_execution_time', '300');
+
             if (UPLOAD_SECRET !== '') {
                 $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_POST['secret'] ?? '';
                 if ($secret !== UPLOAD_SECRET) {
@@ -402,20 +409,25 @@ try {
             $saved = false;
 
             if ($uploadError !== UPLOAD_ERR_OK) {
-                respondJson([
-                    'success'           => false,
-                    'error'             => 'Upload error: ' . $uploadError,
-                    'tmp_name'          => $tmpName,
-                    'dest'              => $dest,
-                    'tmp_exists'        => file_exists($tmpName),
-                    'tmp_readable'      => is_readable($tmpName),
-                    'temp_dir'          => sys_get_temp_dir(),
-                    'upload_tmp_dir'    => ini_get('upload_tmp_dir'),
-                    'post_max_size'     => ini_get('post_max_size'),
-                    'upload_max_filesize' => ini_get('upload_max_filesize'),
-                    'writable'          => is_writable($uploadDir),
-                    'request_content_type' => $_SERVER['CONTENT_TYPE'] ?? null,
-                ], 500);
+                if ($uploadError === UPLOAD_ERR_INI_SIZE && $rawBody !== '' && $origName !== '') {
+                    $saved = @file_put_contents($dest, $rawBody, LOCK_EX) !== false;
+                }
+                if (!$saved) {
+                    respondJson([
+                        'success'             => false,
+                        'error'               => 'Upload error: ' . $uploadError,
+                        'tmp_name'            => $tmpName,
+                        'dest'                => $dest,
+                        'tmp_exists'          => file_exists($tmpName),
+                        'tmp_readable'        => is_readable($tmpName),
+                        'temp_dir'            => sys_get_temp_dir(),
+                        'upload_tmp_dir'      => ini_get('upload_tmp_dir'),
+                        'post_max_size'       => ini_get('post_max_size'),
+                        'upload_max_filesize' => ini_get('upload_max_filesize'),
+                        'writable'            => is_writable($uploadDir),
+                        'request_content_type'=> $_SERVER['CONTENT_TYPE'] ?? null,
+                    ], 500);
+                }
             }
 
             if ($tmpName !== '' && file_exists($tmpName) && is_uploaded_file($tmpName)) {
@@ -437,22 +449,22 @@ try {
                 $saved = @file_put_contents($dest, $rawBody, LOCK_EX) !== false;
             }
 
-if (!$saved) {
-    respondJson([
-        'success'        => false,
-        'error'          => 'Error al guardar archivo temporal',
-        'upload_error'   => $uploadError,
-        'tmp_name'       => $tmpName,
-        'dest'           => $dest,
-        'tmp_exists'     => file_exists($tmpName),
-        'tmp_readable'   => is_readable($tmpName),
-        'tmp_size'       => $tmpName && file_exists($tmpName) ? @filesize($tmpName) : null,
-        'temp_dir'       => sys_get_temp_dir(),
-        'writable'       => is_writable($tempDir),
-        'is_uploaded'    => $tmpName !== '' ? is_uploaded_file($tmpName) : false,
-        'dest_parent_ok' => is_dir(dirname($dest)) && is_writable(dirname($dest))
-    ], 500);
-}
+            if (!$saved) {
+                respondJson([
+                    'success'        => false,
+                    'error'          => 'Error al guardar archivo temporal',
+                    'upload_error'   => $uploadError,
+                    'tmp_name'       => $tmpName,
+                    'dest'           => $dest,
+                    'tmp_exists'     => file_exists($tmpName),
+                    'tmp_readable'   => is_readable($tmpName),
+                    'tmp_size'       => $tmpName && file_exists($tmpName) ? @filesize($tmpName) : null,
+                    'temp_dir'       => sys_get_temp_dir(),
+                    'writable'       => is_writable($uploadDir),
+                    'is_uploaded'    => $tmpName !== '' ? is_uploaded_file($tmpName) : false,
+                    'dest_parent_ok' => is_dir(dirname($dest)) && is_writable(dirname($dest))
+                ], 500);
+            }
 
 $backupSync = ensureCSVBackups($dest);
 
