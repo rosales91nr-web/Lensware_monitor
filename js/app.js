@@ -615,7 +615,15 @@ function renderJobHistoryModalHtml(data) {
             </div>`).join('')}`;
 }
 
+function closeModals() {
+    document.querySelectorAll('.modal.active').forEach(modal => {
+        if (modal.id === 'modal-device') destroyDeviceHourChart();
+        modal.classList.remove('active');
+    });
+}
+
 async function showJobHistoryModal(job) {
+    closeModals();
     const modal = document.getElementById('modal-job-history');
     const body = document.getElementById('job-history-body');
     const titleEl = document.getElementById('modal-job-history-title');
@@ -908,12 +916,45 @@ function renderOperators() {
         .map(([u, d]) => ({ user: u, records: d.records, jobs: d.jobs.size, devices: d.devices.size }))
         .sort((a, b) => b.records - a.records);
     tbody.innerHTML = rows.map(r => `
-        <tr>
+        <tr onclick="showOperatorRecords('${escapeAttr(r.user)}')" style="cursor:pointer;">
             <td><strong>${escapeHtml(r.user)}</strong></td>
             <td>${formatNumber(r.records)}</td>
             <td>${formatNumber(r.jobs)}</td>
             <td>${r.devices}</td>
         </tr>`).join('');
+}
+
+function showOperatorRecords(user) {
+    const records = (appData.records || []).filter(r => (r.user || 'Desconocido') === user);
+    if (!records.length) return;
+    const modal = document.getElementById('modal-detail');
+    closeModals();
+    document.getElementById('detail-title').textContent = `👤 Operador — ${escapeHtml(user)}`;
+    const uniqueJobs = new Set(records.map(r => r.job));
+    const uniqueDevices = new Set(records.filter(r => r.device).map(r => r.device));
+    const latest = records.slice(-10).reverse();
+    document.getElementById('detail-body').innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:16px;">
+            <div style="background:#f8fafc;padding:16px;border-radius:16px;">
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:12px;">
+                    ${createDetailRow('Registros',records.length,true)}
+                    ${createDetailRow('Órdenes únicas',uniqueJobs.size,true)}
+                    ${createDetailRow('Dispositivos',uniqueDevices.size,true)}
+                </div>
+            </div>
+            <div style="background:#f8fafc;padding:16px;border-radius:16px;">
+                <h4 style="margin-bottom:12px;color:#3b82f6;">Últimos registros</h4>
+                <div style="display:grid;gap:10px;">
+                    ${latest.map(r => `<div style="padding:12px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;display:grid;grid-template-columns:80px 1fr;gap:8px;">
+                        <div style="font-size:12px;color:#64748b;">Job</div><div style="font-size:13px;font-weight:600;">${escapeHtml(r.job)}</div>
+                        <div style="font-size:12px;color:#64748b;">Fecha</div><div style="font-size:13px;">${escapeHtml(r.date_raw)} ${escapeHtml(r.time_raw)}</div>
+                        <div style="font-size:12px;color:#64748b;">Dispositivo</div><div style="font-size:13px;">${escapeHtml(r.device || '—')}</div>
+                        <div style="font-size:12px;color:#64748b;">Status</div><div style="font-size:13px;">${escapeHtml(r.status_label || r.status || '—')}</div>
+                    </div>`).join('')}
+                </div>
+            </div>
+        </div>`;
+    modal.classList.add('active');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1097,6 +1138,7 @@ async function showDeviceDetail(deviceName) {
         const data = result.details;
         destroyDeviceHourChartOnly();
         deviceModalHourData = data.hour_distribution || Array(24).fill(0);
+        closeModals();
         const modal = document.getElementById('modal-device');
         document.getElementById('modal-device-title').textContent = `📟 ${deviceName}`;
         document.getElementById('device-details').innerHTML = `
@@ -1215,6 +1257,7 @@ function showDetail(job, date, time) {
 
 function renderDetailModal(record) {
     if (!record) return;
+    closeModals();
     const modal = document.getElementById('modal-detail');
     document.getElementById('detail-title').textContent = `${record.is_breakage ? '⚠️ QUIEBRA' : '📋 Registro'} - Job ${record.job}`;
     document.getElementById('detail-body').innerHTML = `
@@ -1272,6 +1315,7 @@ async function showBackups() {
                     </tbody>
                 </table>`;
         }
+        closeModals();
         document.getElementById('modal-backups').classList.add('active');
     } catch(e) { console.error(e); }
 }
