@@ -12,7 +12,12 @@ RUN mkdir -p /var/www/html/cache \
              /var/www/html/data/reports \
              /var/www/html/data/staging \
              /var/www/html/data/backups \
-    && chown -R www-data:www-data /var/www/html
+             /tmp/lensware/staging \
+             /tmp/lensware/backups \
+             /tmp/lensware/cache \
+             /tmp/lensware/logs \
+    && chown -R www-data:www-data /var/www/html /tmp/lensware \
+    && chmod -R 777 /tmp/lensware
 
 # Copy nginx config
 COPY docker/nginx.conf /etc/nginx/nginx.conf
