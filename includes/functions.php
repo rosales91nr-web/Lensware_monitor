@@ -842,17 +842,6 @@ function groupBackupsByDateFromList(array $all): array {
     return $byDate;
 }
 
-function pickOfficialBackupMeta(array $backups, bool $isToday): ?array {
-    if ($backups === []) return null;
-    if ($isToday) return $backups[0];
-    foreach ($backups as $b) {
-        if (!empty($b['is_daily']) || str_contains($b['filename'], '_2359_')) {
-            return $b;
-        }
-    }
-    return $backups[0];
-}
-
 function filterRecordsByDateRange(array $records, string $dateFrom, string $dateTo): array {
     return array_values(array_filter($records, function ($r) use ($dateFrom, $dateTo) {
         $d = normalizeRecordDate($r['date_raw'] ?? '');
@@ -923,21 +912,42 @@ function buildBackupRangePayload(string $dateFrom, string $dateTo, string $hourF
             }
         } else {
             $backups = $byDate[$dateKey] ?? [];
-            $chosen  = pickOfficialBackupMeta($backups, false);
-            if (!$chosen) continue;
-            $path = BACKUP_FOLDER . '/' . $chosen['filename'];
-            if (!is_file($path)) continue;
-            $data = processCSV($path);
-            if (!$data || empty($data['records'])) continue;
-            $dayRecords = filterRecordsByDateRange($data['records'], $dateKey, $dateKey);
-            unset($data); // liberar RAM inmediatamente tras extraer los registros del día
-            $filesLoaded[] = [
-                'date'     => $dateKey,
-                'source'   => 'backup',
-                'filename' => $chosen['filename'],
-                'records'  => count($dayRecords),
-                'is_daily' => !empty($chosen['is_daily']),
-            ];
+            if ($backups === []) {
+                continue;
+            }
+
+            foreach ($backups as $chosen) {
+                $path = BACKUP_FOLDER . '/' . $chosen['filename'];
+                if (!is_file($path)) {
+                    continue;
+                }
+
+                $data = processCSV($path);
+                if (!$data || empty($data['records'])) {
+                    unset($data);
+                    continue;
+                }
+
+                $fileRecords = filterRecordsByDateRange($data['records'], $dateKey, $dateKey);
+                unset($data); // liberar RAM inmediatamente tras extraer los registros del día
+
+                if ($fileRecords === []) {
+                    continue;
+                }
+
+                $dayRecords = array_merge($dayRecords, $fileRecords);
+                $filesLoaded[] = [
+                    'date'     => $dateKey,
+                    'source'   => 'backup',
+                    'filename' => $chosen['filename'],
+                    'records'  => count($fileRecords),
+                    'is_daily' => !empty($chosen['is_daily']),
+                ];
+            }
+
+            if ($dayRecords === []) {
+                continue;
+            }
         }
 
         if ($dayRecords !== []) {
