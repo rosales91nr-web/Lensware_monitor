@@ -597,6 +597,7 @@ break;
             }
 
             $origName = basename(trim($_GET['filename'] ?? ''));
+            $uploadId = trim($_GET['upload_id'] ?? $_POST['upload_id'] ?? '');
             $chunkIndex = isset($_GET['chunk_index']) ? (int) $_GET['chunk_index'] : null;
             $chunkCount = isset($_GET['chunk_count']) ? (int) $_GET['chunk_count'] : null;
             $chunkSize  = isset($_GET['chunk_size']) ? (int) $_GET['chunk_size'] : null;
@@ -616,15 +617,34 @@ break;
                 respondJson(['success' => false, 'error' => 'Archivo no válido'], 400);
             }
 
+            if ($uploadId === '') {
+                $uploadId = sha1($origName . '|' . ($secret ?? '') . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
+            }
+            $uploadId = preg_replace('/[^A-Za-z0-9_-]/', '', $uploadId);
+            if ($uploadId === '') {
+                respondJson(['success' => false, 'error' => 'Upload ID inválido'], 400);
+            }
+
             $uploadDir = defined('STAGING_FOLDER') && STAGING_FOLDER ? STAGING_FOLDER : sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'lensware_uploads';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0777, true);
                 @chmod($uploadDir, 0777);
             }
 
-            $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
-            if ($chunkIndex === 0 && file_exists($dest)) {
-                @unlink($dest);
+            $chunkDir = $uploadDir . DIRECTORY_SEPARATOR . '.chunks_' . $uploadId;
+            if ($chunkIndex === 0) {
+                if (is_dir($chunkDir)) {
+                    foreach (glob($chunkDir . '/*') ?: [] as $oldChunk) {
+                        @unlink($oldChunk);
+                    }
+                }
+                if (file_exists($uploadDir . DIRECTORY_SEPARATOR . $origName)) {
+                    @unlink($uploadDir . DIRECTORY_SEPARATOR . $origName);
+                }
+            }
+            if (!is_dir($chunkDir)) {
+                mkdir($chunkDir, 0777, true);
+                @chmod($chunkDir, 0777);
             }
 
             $chunkData = @file_get_contents('php://input');
@@ -632,12 +652,51 @@ break;
                 respondJson(['success' => false, 'error' => 'No se recibió el fragmento del archivo'], 400);
             }
 
-            $saved = @file_put_contents($dest, $chunkData, FILE_APPEND | LOCK_EX) !== false;
+            $chunkFile = $chunkDir . DIRECTORY_SEPARATOR . 'chunk_' . str_pad($chunkIndex, 6, '0', STR_PAD_LEFT);
+            $saved = @file_put_contents($chunkFile, $chunkData, LOCK_EX) !== false;
             if (!$saved) {
-                respondJson(['success' => false, 'error' => 'No se pudo almacenar el fragmento', 'target' => $dest], 500);
+                respondJson(['success' => false, 'error' => 'No se pudo almacenar el fragmento', 'target' => $chunkFile], 500);
             }
 
             if ($chunkIndex === $chunkCount - 1) {
+                $chunkFiles = glob($chunkDir . DIRECTORY_SEPARATOR . 'chunk_*') ?: [];
+                if (count($chunkFiles) !== $chunkCount) {
+                    respondJson(['success' => false, 'error' => 'Faltan fragmentos para ensamblar el archivo', 'got' => count($chunkFiles), 'expected' => $chunkCount], 500);
+                }
+                natsort($chunkFiles);
+
+                $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
+                $tempDest = $uploadDir . DIRECTORY_SEPARATOR . '.assembling_' . uniqid('', true) . '.tmp';
+                $out = fopen($tempDest, 'wb');
+                if ($out === false) {
+                    respondJson(['success' => false, 'error' => 'No se pudo crear archivo temporal de ensamblado'], 500);
+                }
+
+                foreach ($chunkFiles as $filePath) {
+                    $in = fopen($filePath, 'rb');
+                    if ($in === false) {
+                        fclose($out);
+                        @unlink($tempDest);
+                        respondJson(['success' => false, 'error' => 'No se pudo leer fragmento', 'chunk' => basename($filePath)], 500);
+                    }
+                    stream_copy_to_stream($in, $out);
+                    fclose($in);
+                }
+                fclose($out);
+
+                if (file_exists($dest)) {
+                    @unlink($dest);
+                }
+                if (!rename($tempDest, $dest)) {
+                    @unlink($tempDest);
+                    respondJson(['success' => false, 'error' => 'No se pudo mover el archivo ensamblado al destino'], 500);
+                }
+
+                foreach (glob($chunkDir . '/*') ?: [] as $oldChunk) {
+                    @unlink($oldChunk);
+                }
+                @rmdir($chunkDir);
+
                 $backupSync = ensureCSVBackups($dest);
                 rebuildBackupIndex();
                 $payload = buildLiveDataPayload($dest);
@@ -667,7 +726,7 @@ break;
                 'message'      => 'Fragmento recibido',
                 'chunk_index'  => $chunkIndex,
                 'chunk_count'  => $chunkCount,
-                'upload_path'  => $dest,
+                'upload_path'  => $chunkDir,
             ]);
             break;
 

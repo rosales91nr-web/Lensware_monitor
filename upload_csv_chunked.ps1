@@ -24,7 +24,8 @@ param(
 
     [string]$Endpoint = 'http://localhost/Lensware_monitor-main/api.php?action=upload_csv_chunk',
     [string]$Secret = '',
-    [int]$ChunkSize = 262144
+    [string]$UploadId = '',
+    [int]$ChunkSize = 200000
 )
 
 if (-not (Test-Path $FilePath)) {
@@ -33,6 +34,9 @@ if (-not (Test-Path $FilePath)) {
 }
 
 $filename = [System.IO.Path]::GetFileName($FilePath)
+if (-not $UploadId) {
+    $UploadId = [guid]::NewGuid().ToString('N')
+}
 $stream = [System.IO.File]::OpenRead($FilePath)
 $totalChunks = [math]::Ceiling($stream.Length / $ChunkSize)
 $chunkIndex = 0
@@ -49,8 +53,8 @@ try {
             $buffer = $buffer[0..($read - 1)]
         }
 
-        $uri = [string]::Format('{0}&filename={1}&chunk_index={2}&chunk_count={3}&chunk_size={4}', 
-            $Endpoint, [uri]::EscapeDataString($filename), $chunkIndex, $totalChunks, $read)
+        $uri = [string]::Format('{0}&filename={1}&upload_id={2}&chunk_index={3}&chunk_count={4}&chunk_size={5}', 
+            $Endpoint, [uri]::EscapeDataString($filename), [uri]::EscapeDataString($UploadId), $chunkIndex, $totalChunks, $read)
 
         $headers = @{ 'Content-Type' = 'application/octet-stream' }
         if ($Secret -ne '') {

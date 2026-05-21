@@ -1797,7 +1797,7 @@ function togglePwd() {
         const secret = document.querySelector('meta[name="upload-secret"]')?.content || '';
         try {
             progBar.style.width = '30%';
-            const data = selectedFile.size > 1000000
+            const data = selectedFile.size > 512 * 1024
                 ? await uploadCsvInChunks(selectedFile, secret)
                 : await uploadCsvDirect(selectedFile, secret);
             progBar.style.width = '100%';
@@ -1828,9 +1828,11 @@ function togglePwd() {
     }
 
     async function uploadCsvInChunks(file, secret) {
-        const CHUNK_SIZE = 256 * 1024;
+        const CHUNK_SIZE = 200 * 1024;
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        const uploadId = (self.crypto?.randomUUID?.() || `u${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
         let result = null;
+
         for (let index = 0; index < totalChunks; index++) {
             const chunk = file.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE);
             const headers = {
@@ -1841,18 +1843,28 @@ function togglePwd() {
             }
             const params = new URLSearchParams({
                 filename: file.name,
+                upload_id: uploadId,
                 chunk_index: String(index),
                 chunk_count: String(totalChunks),
                 chunk_size: String(chunk.size)
             });
-            const response = await fetch(`api.php?action=upload_csv_chunk&${params.toString()}`, {
-                method: 'POST',
-                headers,
-                body: chunk
-            });
-            result = await response.json();
-            if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Error al subir el archivo en fragmentos');
+
+            let attempt = 0;
+            while (attempt < 3) {
+                const response = await fetch(`api.php?action=upload_csv_chunk&${params.toString()}`, {
+                    method: 'POST',
+                    headers,
+                    body: chunk
+                });
+                result = await response.json().catch(() => null);
+                if (response.ok && result && result.success) {
+                    break;
+                }
+                attempt += 1;
+                if (attempt >= 3) {
+                    throw new Error(result?.error || `Error al subir el fragmento ${index + 1}`);
+                }
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
             progBar.style.width = `${30 + Math.round(60 * (index + 1) / totalChunks)}%`;
         }
