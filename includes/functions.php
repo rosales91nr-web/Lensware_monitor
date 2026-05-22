@@ -653,6 +653,8 @@ function getDeviceStats(array $records): array {
         $s['jobs_con_brea'] = count($jobsConBrea[$dev]);
         $s['brea_eventos'] = count($incidentes[$dev]);
         $s['rate'] = $s['jobs'] > 0 ? round($s['jobs_con_brea'] / $s['jobs'] * 100, 2) : 0;
+        $s['avg_per_hour'] = $s['total'] > 0 ? round($s['total'] / 24, 2) : 0;
+        $s['availability_percent'] = count($jobs[$dev]) > 0 ? round(min(100, count($jobs[$dev]) / 24 * 100), 2) : 0;
     }
     unset($s);
 
@@ -689,15 +691,31 @@ function getDeviceDetails(array $records, string $deviceName): array {
     }
 
     arsort($jobs);
+    
+    $noProductionHours = [];
+    for ($h = 0; $h < 24; $h++) {
+        if ($hourDist[$h] === 0) {
+            $noProductionHours[] = sprintf('%02d:00-%02d:59', $h, $h);
+        }
+    }
+    
+    $totalRecords = count($filtered);
+    $avgPerHour = $totalRecords > 0 ? round($totalRecords / 24, 2) : 0;
+    $hoursWithProduction = array_sum(array_map(fn($h) => $h > 0 ? 1 : 0, $hourDist));
+    $availabilityPercent = min(100, round($hoursWithProduction / 24 * 100, 2));
+    
     return [
-        'records'            => $filtered,
-        'total_records'      => count($filtered),
-        'total_jobs'         => count($jobs),
-        'jobs_con_brea'      => count($jobsConBrea),
-        'brea_eventos'       => count($incidentes),
-        'breakages'          => count($incidentes),
-        'hour_distribution'  => $hourDist,
-        'jobs'               => $jobs,
+        'records'               => $filtered,
+        'total_records'         => $totalRecords,
+        'total_jobs'            => count($jobs),
+        'jobs_con_brea'         => count($jobsConBrea),
+        'brea_eventos'          => count($incidentes),
+        'breakages'             => count($incidentes),
+        'hour_distribution'     => $hourDist,
+        'jobs'                  => $jobs,
+        'avg_per_hour'          => $avgPerHour,
+        'availability_percent'  => $availabilityPercent,
+        'no_production_hours'   => $noProductionHours,
     ];
 }
 

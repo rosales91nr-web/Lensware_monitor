@@ -894,6 +894,8 @@ function renderDevices() {
             <td><strong>${escapeHtml(d.device)}</strong></td>
             <td>${formatNumber(d.total)}</td>
             <td>${formatNumber(d.jobs)}</td>
+            <td>${d.avg_per_hour ?? 0}</td>
+            <td><span style="background:#e6f7ed;color:#059669;padding:4px 8px;border-radius:6px;font-weight:600;">${d.availability_percent ?? 0}%</span></td>
             <td style="color:#ef4444;font-weight:600;">${formatNumber(d.jobs_con_brea ?? 0)}</td>
             <td>${formatNumber(d.brea_eventos ?? d.breakages ?? 0)}</td>
         </tr>`).join('');
@@ -1148,10 +1150,20 @@ async function showDeviceDetail(deviceName) {
                 ${[
                     ['Total registros', data.total_records, '#3b82f6'],
                     ['Jobs únicos', data.total_jobs, '#10b981'],
+                    ['Prom. x hora', data.avg_per_hour ?? 0, '#8b5cf6'],
+                    ['Disponibilidad', (data.availability_percent ?? 0) + '%', '#059669'],
                     ['Órdenes c/quiebra', data.jobs_con_brea ?? 0, '#ef4444'],
                     ['Eventos quiebra', data.brea_eventos ?? data.breakages ?? 0, '#dc2626'],
-                ].map(([l,v,c])=>`<div style="background:#f8fafc;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:6px;">${l}</div><div style="font-size:32px;font-weight:800;color:${c};">${formatNumber(v)}</div></div>`).join('')}
+                ].map(([l,v,c])=>`<div style="background:#f8fafc;border-radius:12px;padding:16px;text-align:center;"><div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:6px;">${l}</div><div style="font-size:32px;font-weight:800;color:${c};">${typeof v === 'number' ? formatNumber(v) : v}</div></div>`).join('')}
             </div>
+            ${data.no_production_hours && data.no_production_hours.length > 0 ? `
+            <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:20px;">
+                <h4 style="font-size:13px;font-weight:700;margin:0 0 12px 0;color:#dc2626;">⚠️ Horas sin producción (${data.no_production_hours.length})</h4>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    ${data.no_production_hours.map(h => `<span style="background:#fee2e2;color:#991b1b;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;">${h}</span>`).join('')}
+                </div>
+            </div>
+            ` : ''}
             <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:20px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;">
                     <h4 style="font-size:13px;font-weight:700;margin:0;">Actividad por hora</h4>

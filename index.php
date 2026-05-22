@@ -1533,7 +1533,7 @@ function togglePwd() {
         <div id="tab-devices" class="tab-content">
             <div class="table-container table-scroll">
                 <table class="data-table" id="devices-table">
-                    <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th><th>Órdenes c/quiebra</th><th>Eventos</th></tr></thead>
+                    <thead><tr><th>Dispositivo</th><th>Total</th><th>Jobs</th><th>Prom. x hora</th><th>Disponibilidad</th><th>Órdenes c/quiebra</th><th>Eventos</th></tr></thead>
                     <tbody id="devices-tbody"></tbody>
                 </table>
             </div>
