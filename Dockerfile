@@ -15,13 +15,15 @@ RUN mkdir -p /var/www/html/cache \
              /var/www/html/data/reports \
              /var/www/html/data/staging \
              /var/www/html/data/backups \
+             /var/www/html/data/cache \
              /tmp/lensware/staging \
              /tmp/lensware/backups \
              /tmp/lensware/cache \
              /tmp/lensware/logs \
              /run/nginx \
     && chown -R www-data:www-data /var/www/html /tmp/lensware \
-    && chmod -R 777 /tmp/lensware
+    && chmod -R 777 /tmp/lensware \
+    && chmod -R 777 /var/www/html/data
 
 # Configuración nginx
 COPY docker/nginx.conf /etc/nginx/nginx.conf
