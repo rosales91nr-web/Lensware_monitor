@@ -1,0 +1,13 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "/usr/bin/supervisord -c /etc/supervisord.conf"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+
+[env]
+APP_ENV = "railway"
+RAILWAY_ENVIRONMENT = "production"
