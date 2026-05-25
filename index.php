@@ -1598,7 +1598,7 @@ function togglePwd() {
                     <div id="hist-mode-day" class="hist-mode-panel hist-day-fields">
                     <!-- Selector de fecha rápida por día disponible -->
                     <div class="hist-field" style="flex:1;min-width:280px;">
-                        <label>Día (backups disponibles)</label>
+                        <label>📅 Calendario</label>
                         <div id="hist-day-picker" class="day-picker">
                             <span style="font-size:12px;color:#94a3b8;padding:6px 0;">Cargando backups...</span>
                         </div>

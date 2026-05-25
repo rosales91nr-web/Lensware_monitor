@@ -1456,12 +1456,18 @@ function renderHistDayChips() {
         const isSelected = dayObj.date === histState.selectedDate;
         const isToday    = dayObj.is_today;
         const hasDaily   = dayObj.has_daily || dayObj.all?.some(b => b.is_daily || b.filename?.includes('_2359_'));
+        
+        // Extraer solo el día de la fecha (24, 23, etc)
+        const dateParts = dayObj.date.split('-');
+        const dayNum = dateParts[2] ? parseInt(dateParts[2]) : '';
+        const dayDisplay = isToday ? '📅' : dayNum;
+        
         return `<span
             class="day-chip ${isToday?'today':''} ${isSelected?'selected':''} ${hasDaily&&!isToday?'daily':''}"
             data-date="${escapeAttr(dayObj.date)}"
-            title="${isToday?'Hoy — backup más reciente':(hasDaily?'Backup diario 23:59 disponible':'Backup disponible')}"
+            title="${isToday?'Hoy — backup más reciente':(hasDaily?'⭐ Backup diario 23:59':'📦 Backup disponible')} (${dayObj.label})"
             onclick="selectHistDay('${escapeAttr(dayObj.date)}')">
-            ${escapeHtml(isToday ? '📅 Hoy' : dayObj.label)}
+            ${dayDisplay}${hasDaily&&!isToday?'⭐':''}
         </span>`;
     }).join('');
 }
