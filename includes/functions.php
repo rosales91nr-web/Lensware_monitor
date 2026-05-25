@@ -611,6 +611,7 @@ function getBreakages(array $records): array {
 function getDeviceStats(array $records): array {
     $stats = [];
     $jobs = [];
+    $hours = [];
     $jobsConBrea = [];
     $incidentes = [];
 
@@ -631,12 +632,18 @@ function getDeviceStats(array $records): array {
                 'rate' => 0,
             ];
             $jobs[$dev] = [];
+            $hours[$dev] = [];
             $jobsConBrea[$dev] = [];
             $incidentes[$dev] = [];
         }
 
         $stats[$dev]['total']++;
         $jobs[$dev][$r['job']] = true;
+
+        $hour = recordHour($r['time_raw'] ?? '');
+        if ($hour >= 0 && $hour < 24) {
+            $hours[$dev][$hour] = true;
+        }
 
         if ($r['is_breakage']) {
             $stats[$dev]['brea']++;
@@ -649,12 +656,13 @@ function getDeviceStats(array $records): array {
     }
 
     foreach ($stats as $dev => &$s) {
+        $hoursWithProduction = count($hours[$dev]);
         $s['jobs'] = count($jobs[$dev]);
         $s['jobs_con_brea'] = count($jobsConBrea[$dev]);
         $s['brea_eventos'] = count($incidentes[$dev]);
         $s['rate'] = $s['jobs'] > 0 ? round($s['jobs_con_brea'] / $s['jobs'] * 100, 2) : 0;
-        $s['avg_per_hour'] = $s['total'] > 0 ? round($s['total'] / 24, 2) : 0;
-        $s['availability_percent'] = count($jobs[$dev]) > 0 ? round(min(100, count($jobs[$dev]) / 24 * 100), 2) : 0;
+        $s['avg_per_hour'] = $hoursWithProduction > 0 ? round($s['total'] / $hoursWithProduction, 2) : 0;
+        $s['availability_percent'] = $hoursWithProduction > 0 ? round(min(100, $hoursWithProduction / 24 * 100), 2) : 0;
     }
     unset($s);
 
@@ -700,9 +708,9 @@ function getDeviceDetails(array $records, string $deviceName): array {
     }
     
     $totalRecords = count($filtered);
-    $avgPerHour = $totalRecords > 0 ? round($totalRecords / 24, 2) : 0;
     $hoursWithProduction = array_sum(array_map(fn($h) => $h > 0 ? 1 : 0, $hourDist));
-    $availabilityPercent = min(100, round($hoursWithProduction / 24 * 100, 2));
+    $avgPerHour = $hoursWithProduction > 0 ? round($totalRecords / $hoursWithProduction, 2) : 0;
+    $availabilityPercent = $hoursWithProduction > 0 ? min(100, round($hoursWithProduction / 24 * 100, 2)) : 0;
     
     return [
         'records'               => $filtered,
