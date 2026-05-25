@@ -11,3 +11,4 @@ restartPolicyType = "on_failure"
 [env]
 APP_ENV = "railway"
 RAILWAY_ENVIRONMENT = "production"
+BACKUP_KEEP_ONLY_TODAY = "1"

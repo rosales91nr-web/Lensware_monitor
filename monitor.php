@@ -41,9 +41,17 @@ echo "Origen:  " . $result['data_source'] . "\n";
 echo "Modificado: " . $result['modified'] . "\n";
 echo "Registros: " . $result['records'] . "\n";
 
-$cleanup = cleanupOldBackups(7);
-if ($cleanup['deleted'] > 0) {
-    echo "Limpieza: {$cleanup['deleted']} respaldo(s) intermedio(s) antiguo(s) eliminados.\n";
+$keepTodayOnly = getenv('BACKUP_KEEP_ONLY_TODAY') === '1';
+if ($keepTodayOnly) {
+    $cleanup = cleanupBackupsKeepTodayOnly();
+    if ($cleanup['deleted'] > 0) {
+        echo "Limpieza: {$cleanup['deleted']} respaldo(s) antiguos eliminados, conservado solo el backup de hoy.\n";
+    }
+} else {
+    $cleanup = cleanupOldBackups(7);
+    if ($cleanup['deleted'] > 0) {
+        echo "Limpieza: {$cleanup['deleted']} respaldo(s) intermedio(s) antiguo(s) eliminados.\n";
+    }
 }
 
 echo "\nMonitor ejecutado correctamente.\n";

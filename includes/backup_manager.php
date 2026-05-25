@@ -760,6 +760,92 @@ function cleanupOldBackups(int $keepIncrementalDays = 7): array
     return ['deleted' => count($deleted), 'kept' => $kept, 'files_deleted' => $deleted];
 }
 
+function cleanupBackupsKeepTodayOnly(bool $dryRun = false): array
+{
+    if (!defined('BACKUP_FOLDER')) {
+        return ['dry_run' => $dryRun, 'kept' => 0, 'deleted' => 0, 'freed_bytes' => 0, 'files_deleted' => [], 'error' => 'BACKUP_FOLDER no definido'];
+    }
+
+    $dir = BACKUP_FOLDER;
+    if (!is_dir($dir)) {
+        return ['dry_run' => $dryRun, 'kept' => 0, 'deleted' => 0, 'freed_bytes' => 0, 'files_deleted' => [], 'error' => 'BACKUP_FOLDER no existe: ' . $dir];
+    }
+
+    $tz = new DateTimeZone('America/Costa_Rica');
+    $today = (new DateTimeImmutable('now', $tz))->format('Ymd');
+    $files = glob($dir . DIRECTORY_SEPARATOR . 'BACKUP_*.csv') ?: [];
+
+    $todayBackups = [];
+    $deleted = [];
+    $freedBytes = 0;
+    $kept = 0;
+
+    foreach ($files as $file) {
+        $name = basename($file);
+        if (preg_match('/^BACKUP_(\d{8})_/', $name, $match)) {
+            $fileDate = $match[1];
+        } else {
+            $fileDate = date('Ymd', filemtime($file));
+        }
+
+        if ($fileDate !== $today) {
+            if (!$dryRun && @unlink($file)) {
+                logMessage("cleanup today: eliminado {$name}");
+            }
+            $deleted[] = $name;
+            $freedBytes += filesize($file);
+            continue;
+        }
+
+        $todayBackups[] = [
+            'file' => $file,
+            'name' => $name,
+            'is_daily' => str_contains($name, '_2359_'),
+            'mtime' => filemtime($file),
+            'size' => filesize($file),
+        ];
+    }
+
+    if (!empty($todayBackups)) {
+        $official = null;
+        foreach ($todayBackups as $entry) {
+            if ($entry['is_daily']) {
+                $official = $entry;
+                break;
+            }
+        }
+        if ($official === null) {
+            usort($todayBackups, fn($a, $b) => $b['mtime'] - $a['mtime']);
+            $official = $todayBackups[0];
+        }
+
+        foreach ($todayBackups as $entry) {
+            if ($entry['file'] === $official['file']) {
+                $kept++;
+                continue;
+            }
+            if (!$dryRun && @unlink($entry['file'])) {
+                logMessage("cleanup today: eliminado {$entry['name']}");
+            }
+            $deleted[] = $entry['name'];
+            $freedBytes += $entry['size'];
+        }
+    }
+
+    if (count($deleted) > 0) {
+        rebuildBackupIndex();
+    }
+
+    return [
+        'dry_run' => $dryRun,
+        'kept' => $kept,
+        'deleted' => count($deleted),
+        'freed_bytes' => $freedBytes,
+        'freed_mb' => round($freedBytes / 1024 / 1024, 2),
+        'files_deleted' => $deleted,
+    ];
+}
+
 // Legacy stubs
 function getLastBackupTimestamp(): int
 {
