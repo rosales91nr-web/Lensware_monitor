@@ -66,7 +66,20 @@ else {
 define('CSV_PREFIXES', ['UNI_PROD_ALL_ACT_', 'UNI_PROD_SIMPLE_ACT_']);
 define('CACHE_TTL', (int)(getenv('CACHE_TTL') ?: 30));
 define('BACKUP_RANGE_MAX_DAYS', (int)(getenv('BACKUP_RANGE_MAX_DAYS') ?: 365));
-define('BACKUP_RETENTION_DAYS', (int)(getenv('BACKUP_RETENTION_DAYS') ?: 30));
+
+// Retención de respaldos: 365 días de histórico (un año completo)
+// Se puede personalizar con BACKUP_RETENTION_MONTHS o BACKUP_RETENTION_DAYS
+$backupRetentionMonths = (int)(getenv('BACKUP_RETENTION_MONTHS') ?: 0);
+$backupRetentionDays = (int)(getenv('BACKUP_RETENTION_DAYS') ?: 0);
+if ($backupRetentionMonths > 0) {
+    define('BACKUP_RETENTION_DAYS', $backupRetentionMonths * 30);
+} elseif ($backupRetentionDays > 0) {
+    define('BACKUP_RETENTION_DAYS', $backupRetentionDays);
+} else {
+    // Por defecto: 365 días de histórico completo
+    define('BACKUP_RETENTION_DAYS', 365);
+}
+
 define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: '');
 define('APP_ENV', $isRailway ? 'railway' : (getenv('APP_ENV') ?: 'local'));
 
