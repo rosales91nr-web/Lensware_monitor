@@ -376,12 +376,130 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
     }
 
     $result['success'] = $result['dates'] !== [];
+    
+    // Limpiar respaldos antiguos si se crearon nuevos respaldos exitosamente
+    if ($result['success']) {
+        $cleanup = cleanupOldBackups();
+        $result['cleanup'] = $cleanup;
+    }
+    
     return $result;
 }
 
 // =============================================================================
-// Crear respaldos (copia completa o uso legacy)
+// Limpieza de respaldos antiguos (retención por días)
 // =============================================================================
+
+/**
+ * Limpia respaldos más antiguos que el período de retención configurado.
+ * Mantiene un respaldo por día para histórico, borrando archivos obsoletos.
+ * Se ejecuta automáticamente después de crear nuevos respaldos.
+ */
+function cleanupOldBackups(): array
+{
+    if (!defined('BACKUP_FOLDER') || !defined('BACKUP_RETENTION_DAYS')) {
+        return ['deleted' => 0, 'freed_bytes' => 0];
+    }
+
+    $backupDir = BACKUP_FOLDER;
+    if (!is_dir($backupDir)) {
+        return ['deleted' => 0, 'freed_bytes' => 0];
+    }
+
+    $retentionDays = BACKUP_RETENTION_DAYS;
+    if ($retentionDays < 1) {
+        return ['deleted' => 0, 'freed_bytes' => 0];
+    }
+
+    $cutoffTimestamp = time() - ($retentionDays * 86400);
+    $deletedCount = 0;
+    $freedBytes = 0;
+
+    // Obtener lista de respaldos agrupados por fecha
+    $backupsByDate = [];
+    foreach (glob($backupDir . DIRECTORY_SEPARATOR . 'BACKUP_*.csv') ?: [] as $filepath) {
+        $filename = basename($filepath);
+        $fileTime = @filemtime($filepath) ?: 0;
+        
+        // Extraer fecha del nombre del archivo (BACKUP_YYYYMMDD_...)
+        if (preg_match('/^BACKUP_(\d{8})_/', $filename, $m)) {
+            $backupDate = $m[1];
+            if (!isset($backupsByDate[$backupDate])) {
+                $backupsByDate[$backupDate] = [];
+            }
+            $backupsByDate[$backupDate][] = [
+                'filepath' => $filepath,
+                'filename' => $filename,
+                'mtime'    => $fileTime,
+                'size'     => filesize($filepath) ?: 0,
+            ];
+        }
+    }
+
+    // Ordenar archivos por fecha de modificación dentro de cada día
+    foreach ($backupsByDate as &$files) {
+        usort($files, fn($a, $b) => $b['mtime'] <=> $a['mtime']);
+    }
+
+    // Borrar archivos antiguos respetando historial diario
+    foreach ($backupsByDate as $backupDate => $files) {
+        // Convertir fecha de nombre a timestamp
+        $dateParts = [
+            'year'   => (int)substr($backupDate, 0, 4),
+            'month'  => (int)substr($backupDate, 4, 2),
+            'day'    => (int)substr($backupDate, 6, 2),
+        ];
+        $dateTimestamp = mktime(23, 59, 59, $dateParts['month'], $dateParts['day'], $dateParts['year']);
+
+        // Si la fecha está fuera del período de retención
+        if ($dateTimestamp < $cutoffTimestamp) {
+            // Mantener el más reciente de ese día para historial, borrar los demás
+            foreach ($files as $index => $file) {
+                if ($index > 0) {  // Saltar el primero (más reciente)
+                    if (@unlink($file['filepath'])) {
+                        $deletedCount++;
+                        $freedBytes += $file['size'];
+                        
+                        if (function_exists('logMessage')) {
+                            $sizeStr = formatBytes($file['size']);
+                            logMessage("Respaldo antiguo borrado: {$file['filename']} ({$sizeStr})");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Actualizar índice de respaldos
+    if ($deletedCount > 0) {
+        rebuildBackupIndex();
+        
+        if (function_exists('logMessage')) {
+            $sizeStr = formatBytes($freedBytes);
+            logMessage("Limpieza de respaldos: $deletedCount archivos borrados, $sizeStr liberados");
+        }
+    }
+
+    return [
+        'deleted' => $deletedCount,
+        'freed_bytes' => $freedBytes,
+        'freed_str' => formatBytes($freedBytes),
+    ];
+}
+
+/**
+ * Formatea bytes a formato legible (KB, MB, GB).
+ */
+function formatBytes(int $bytes): string
+{
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $bytes = max($bytes, 0);
+    $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+    $pow = min($pow, count($units) - 1);
+    $bytes /= 1 << (10 * $pow);
+
+    return round($bytes, 2) . ' ' . $units[$pow];
+}
 
 function backupCSV(string $filepath, ?string $timestamp = null): bool
 {

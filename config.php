@@ -66,6 +66,7 @@ else {
 define('CSV_PREFIXES', ['UNI_PROD_ALL_ACT_', 'UNI_PROD_SIMPLE_ACT_']);
 define('CACHE_TTL', (int)(getenv('CACHE_TTL') ?: 30));
 define('BACKUP_RANGE_MAX_DAYS', (int)(getenv('BACKUP_RANGE_MAX_DAYS') ?: 365));
+define('BACKUP_RETENTION_DAYS', (int)(getenv('BACKUP_RETENTION_DAYS') ?: 30));
 define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: '');
 define('APP_ENV', $isRailway ? 'railway' : (getenv('APP_ENV') ?: 'local'));
 
