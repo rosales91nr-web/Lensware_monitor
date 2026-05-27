@@ -388,7 +388,7 @@ try {
             // Aumentar límites para cargas de CSV más grandes.
             @ini_set('upload_max_filesize', '100M');
             @ini_set('post_max_size', '100M');
-            @ini_set('memory_limit', '512M');
+            @ini_set('memory_limit', '1024M');
             @ini_set('max_input_time', '300');
             @ini_set('max_execution_time', '300');
             @set_time_limit(300);
@@ -545,35 +545,15 @@ try {
                 ], 500);
             }
 
-$backupSync = ensureCSVBackups($dest);
+            logMessage("CSV subido en staging: $origName");
 
-$payload = buildLiveDataPayload($dest);
+            respondJson([
+                'success'      => true,
+                'message'      => 'CSV cargado en staging',
+                'staging_file' => $origName,
+                'upload_path'  => $dest,
+            ]);
 
-$cached = $payload && saveCache($payload);
-
-logMessage(
-    "CSV importado manualmente: $origName" .
-    ($cached ? ' (caché actualizada)' : '')
-);
-
-$msg = "CSV importado: $origName";
-
-if (!empty($backupSync['dates'])) {
-    $msg .= ' · Respaldos: ' . count($backupSync['dates']) . ' día(s)';
-
-    if (!empty($backupSync['replaced'])) {
-        $msg .= ' (' . count($backupSync['replaced']) . ' reemplazado(s))';
-    }
-}
-
-respondJson([
-    'success'     => true,
-    'message'     => $msg,
-    'cached'      => $cached,
-    'records'     => $cached ? count($payload['records']) : 0,
-    'backup_sync' => $backupSync,
-    'upload_path' => $dest
-]);
 
 break;
 
@@ -584,7 +564,7 @@ break;
             // Aumentar límites para cargas por fragmentos.
             @ini_set('upload_max_filesize', '100M');
             @ini_set('post_max_size', '100M');
-            @ini_set('memory_limit', '512M');
+            @ini_set('memory_limit', '1024M');
             @ini_set('max_input_time', '300');
             @ini_set('max_execution_time', '300');
             @set_time_limit(300);
@@ -697,26 +677,15 @@ break;
                 }
                 @rmdir($chunkDir);
 
-                $backupSync = ensureCSVBackups($dest);
-                rebuildBackupIndex();
-                $payload = buildLiveDataPayload($dest);
-                $cached = $payload && saveCache($payload);
-                $msg = "CSV importado: $origName";
-                if (!empty($backupSync['dates'])) {
-                    $msg .= ' · Respaldos: ' . count($backupSync['dates']) . ' día(s)';
-                    if (!empty($backupSync['replaced'])) {
-                        $msg .= ' (' . count($backupSync['replaced']) . ' reemplazado(s))';
-                    }
-                }
+                logMessage("CSV ensamblado en staging: $origName");
+
                 respondJson([
-                    'success'     => true,
-                    'message'     => $msg,
-                    'cached'      => $cached,
-                    'records'     => $cached ? count($payload['records']) : 0,
-                    'backup_sync' => $backupSync,
-                    'upload_path' => $dest,
-                    'chunk'       => $chunkIndex + 1,
-                    'chunk_count' => $chunkCount,
+                    'success'      => true,
+                    'message'      => 'CSV ensamblado en staging',
+                    'staging_file' => $origName,
+                    'upload_path'  => $dest,
+                    'chunk'        => $chunkIndex + 1,
+                    'chunk_count'  => $chunkCount,
                 ]);
                 break;
             }
@@ -796,6 +765,10 @@ break;
             break;
 
         case 'process_staging_csv':
+            @ini_set('memory_limit', '1024M');
+            @ini_set('max_execution_time', '600');
+            @set_time_limit(600);
+
             $secret = $_SERVER['HTTP_X_UPLOAD_SECRET'] ?? $_GET['secret'] ?? $_POST['secret'] ?? '';
             if (UPLOAD_SECRET !== 'changeme' && $secret !== UPLOAD_SECRET) {
                 respondJson(['success' => false, 'error' => 'No autorizado'], 403);

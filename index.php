@@ -1799,9 +1799,14 @@ function togglePwd() {
         const secret = document.querySelector('meta[name="upload-secret"]')?.content || '';
         try {
             progBar.style.width = '30%';
-            const data = selectedFile.size > 512 * 1024
+            let data = selectedFile.size > 512 * 1024
                 ? await uploadCsvInChunks(selectedFile, secret)
                 : await uploadCsvDirect(selectedFile, secret);
+
+            if (data.success && data.staging_file) {
+                data = await processStagingCsv(data.staging_file, secret);
+            }
+
             progBar.style.width = '100%';
             setTimeout(() => {
                 progress.classList.remove('visible'); progBar.style.width = '0%';
@@ -1871,6 +1876,20 @@ function togglePwd() {
             progBar.style.width = `${30 + Math.round(60 * (index + 1) / totalChunks)}%`;
         }
         return result;
+    }
+
+    async function processStagingCsv(filename, secret) {
+        const params = new URLSearchParams({
+            action: 'process_staging_csv',
+            file: filename,
+        });
+        if (secret && secret !== 'changeme') {
+            params.set('secret', secret);
+        }
+        const response = await fetch(`api.php?${params.toString()}`, {
+            method: 'POST'
+        });
+        return await response.json();
     }
 
     function showResult(type, msg) {
