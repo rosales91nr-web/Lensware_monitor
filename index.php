@@ -1803,7 +1803,7 @@ function togglePwd() {
                 ? await uploadCsvInChunks(selectedFile, secret)
                 : await uploadCsvDirect(selectedFile, secret);
 
-            if (data.success && data.staging_file) {
+            if (data.success && data.staging_file && !data.auto_processed) {
                 data = await processStagingCsv(data.staging_file, secret);
             }
 
@@ -1849,6 +1849,7 @@ function togglePwd() {
                 headers['X-Upload-Secret'] = secret;
             }
             const params = new URLSearchParams({
+                action: 'upload_csv_chunk',
                 filename: file.name,
                 upload_id: uploadId,
                 chunk_index: String(index),
@@ -1858,20 +1859,27 @@ function togglePwd() {
 
             let attempt = 0;
             while (attempt < 3) {
-                const response = await fetch(`api.php?action=upload_csv_chunk&${params.toString()}`, {
-                    method: 'POST',
-                    headers,
-                    body: chunk
-                });
+                let response;
+                try {
+                    response = await fetch(`api.php?${params.toString()}`, {
+                        method: 'POST',
+                        headers,
+                        body: chunk
+                    });
+                } catch (networkErr) {
+                    attempt++;
+                    if (attempt >= 3) throw new Error(`Error de red en fragmento ${index + 1}/${totalChunks}: ${networkErr.message}`);
+                    await new Promise(r => setTimeout(r, 800 * attempt));
+                    continue;
+                }
                 result = await response.json().catch(() => null);
-                if (response.ok && result && result.success) {
-                    break;
-                }
-                attempt += 1;
+                if (response.ok && result && result.success) break;
+                attempt++;
                 if (attempt >= 3) {
-                    throw new Error(result?.error || `Error al subir el fragmento ${index + 1}`);
+                    const errMsg = result?.error || `HTTP ${response.status}`;
+                    throw new Error(`Error al subir fragmento ${index + 1}/${totalChunks}: ${errMsg}`);
                 }
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(r => setTimeout(r, 500 * attempt));
             }
             progBar.style.width = `${30 + Math.round(60 * (index + 1) / totalChunks)}%`;
         }
@@ -1886,9 +1894,19 @@ function togglePwd() {
         if (secret && secret !== 'changeme') {
             params.set('secret', secret);
         }
+        const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+        if (secret && secret !== 'changeme') {
+            headers['X-Upload-Secret'] = secret;
+        }
         const response = await fetch(`api.php?${params.toString()}`, {
-            method: 'POST'
+            method: 'POST',
+            headers,
+            body: '',   // body vacío explícito evita que proxies rechacen el POST
         });
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`process_staging_csv HTTP ${response.status}: ${text.slice(0, 120)}`);
+        }
         return await response.json();
     }
 
