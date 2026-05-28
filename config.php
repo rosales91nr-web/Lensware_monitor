@@ -6,7 +6,9 @@ date_default_timezone_set('America/Costa_Rica');
 // Detectar entorno Railway
 $isRailway = getenv('RAILWAY_ENVIRONMENT') === 'production' || 
              getenv('RAILWAY_SERVICE_ID') !== false ||
-             getenv('APP_ENV') === 'railway';
+             getenv('APP_ENV') === 'railway' ||
+             getenv('APP_ENV') === 'production' ||
+             getenv('PORT') !== false;           // Railway siempre inyecta PORT
 
 // Cargar .env del proyecto (opcional)
 if (file_exists(__DIR__ . '/.env')) {
@@ -82,6 +84,19 @@ if ($backupRetentionMonths > 0) {
 
 define('UPLOAD_SECRET', getenv('UPLOAD_SECRET') ?: '');
 define('APP_ENV', $isRailway ? 'railway' : (getenv('APP_ENV') ?: 'local'));
+
+// Crear carpetas base si no existen (Railway con volumen en /var/www/html/data)
+if ($isRailway) {
+    foreach ([
+        dirname(CACHE_FILE),
+        dirname(LOG_FILE),
+        STAGING_FOLDER,
+        BACKUP_FOLDER,
+    ] as $_dir) {
+        if (!is_dir($_dir)) @mkdir($_dir, 0777, true);
+        @chmod($_dir, 0777);
+    }
+}
 
 // ─────────────────────────────────────────────────────
 // ETIQUETAS Y COLORES (sin cambios)
