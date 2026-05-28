@@ -78,28 +78,49 @@ function lensCountFromRecord(array $r): int {
 // FUNCIONES DE BÚSQUEDA DE ARCHIVOS
 // =============================================================================
 
+/** Detecta si una ruta es UNC/SMB (\\servidor\...) — nunca accesible desde Railway/Linux. */
+function isUncPath(string $path): bool {
+    return str_starts_with($path, '\\\\') || str_starts_with($path, '//');
+}
+
+/**
+ * Verifica si WATCH_FOLDER es accesible SIN bloquear.
+ * En Railway WATCH_FOLDER es ruta SMB — retorna false inmediatamente.
+ */
+function isWatchFolderAccessible(): bool {
+    $folder = WATCH_FOLDER;
+    if (isUncPath($folder)) return false;
+    if (!is_dir($folder))   return false;
+    return is_readable($folder);
+}
+
 function findLatestCSV(): ?string {
-    $folders = [WATCH_FOLDER];
-    if (defined('STAGING_FOLDER') && STAGING_FOLDER && STAGING_FOLDER !== WATCH_FOLDER) {
-        $folders[] = STAGING_FOLDER;
+    $folders = [];
+
+    // WATCH_FOLDER solo si NO es ruta UNC/SMB y es accesible localmente
+    if (!isUncPath(WATCH_FOLDER) && is_dir(WATCH_FOLDER) && is_readable(WATCH_FOLDER)) {
+        $folders[] = WATCH_FOLDER;
     }
 
-    $latest = null;
+    // STAGING_FOLDER siempre (es local en Railway: /tmp/lensware/staging)
+    if (defined('STAGING_FOLDER') && STAGING_FOLDER && STAGING_FOLDER !== WATCH_FOLDER) {
+        if (is_dir(STAGING_FOLDER)) {
+            $folders[] = STAGING_FOLDER;
+        }
+    }
+
+    $latest   = null;
     $latestTs = 0;
     foreach ($folders as $folder) {
-        if (!is_dir($folder)) {
-            continue;
-        }
-
         foreach (CSV_PREFIXES as $prefix) {
             foreach (array_merge(
                 glob($folder . '/' . $prefix . '*.csv') ?: [],
                 glob($folder . '/' . $prefix . '*.CSV') ?: []
             ) as $file) {
-                $ts = filemtime($file);
-                if ($ts > $latestTs) {
+                $ts = @filemtime($file);
+                if ($ts && $ts > $latestTs) {
                     $latestTs = $ts;
-                    $latest = $file;
+                    $latest   = $file;
                 }
             }
         }
