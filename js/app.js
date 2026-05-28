@@ -263,6 +263,7 @@ async function loadData() {
             const msg = result.hint || result.error || 'Esperando CSV en REPORTS...';
             updateStatus(false, msg);
             document.getElementById('file-info').textContent = msg;
+            document.getElementById('backup-folder').textContent = `Carpeta de respaldos: ${result.data?.backup_folder || 'desconocida'}`;
         }
     } catch (error) {
         updateStatus(false, error.message);

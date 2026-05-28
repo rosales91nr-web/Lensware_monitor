@@ -97,12 +97,14 @@ try {
             } catch (Throwable $e) {
                 // Silencioso: no hay caché
             }
+
+            $reportsAccessible = is_dir(WATCH_FOLDER) && is_readable(WATCH_FOLDER);
             
             respondJson([
                 'success' => true,
                 'data'    => [
                     'monitor_active'      => ($latestCSV !== null),
-                    'reports_accessible'  => false,
+                    'reports_accessible'  => $reportsAccessible,
                     'watch_folder'        => WATCH_FOLDER,
                     'staging_folder'      => STAGING_FOLDER,
                     'backup_folder'       => BACKUP_FOLDER,
