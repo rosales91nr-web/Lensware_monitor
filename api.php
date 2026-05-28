@@ -714,13 +714,26 @@ break;
 
                 logMessage("CSV ensamblado en staging: $origName (" . (filesize($dest) / 1024) . " KB)");
 
+                // ── Auto-procesar el CSV ensamblado (evita depender del segundo fetch del cliente) ──
+                $processResult = null;
+                try {
+                    $processResult = ensureCSVBackups($dest);
+                    if ($processResult['success'] ?? false) {
+                        rebuildBackupIndex();
+                        logMessage("CSV auto-procesado tras ensamblado: $origName");
+                    }
+                } catch (Throwable $pEx) {
+                    logMessage("ADVERTENCIA: auto-proceso tras chunk fallido: " . $pEx->getMessage(), 'warning');
+                }
+
                 respondJson([
-                    'success'      => true,
-                    'message'      => 'CSV ensamblado en staging, procesando...',
-                    'staging_file' => $origName,
-                    'upload_path'  => $dest,
-                    'chunk'        => $chunkIndex + 1,
-                    'chunk_count'  => $chunkCount,
+                    'success'        => true,
+                    'message'        => 'CSV ensamblado y procesado',
+                    'staging_file'   => $origName,
+                    'upload_path'    => $dest,
+                    'chunk'          => $chunkIndex + 1,
+                    'chunk_count'    => $chunkCount,
+                    'auto_processed' => ($processResult['success'] ?? false),
                 ]);
                 break;
             }
