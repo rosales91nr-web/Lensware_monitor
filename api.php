@@ -647,41 +647,74 @@ break;
 
                 $dest = $uploadDir . DIRECTORY_SEPARATOR . $origName;
                 $tempDest = $uploadDir . DIRECTORY_SEPARATOR . '.assembling_' . uniqid('', true) . '.tmp';
-                $out = fopen($tempDest, 'wb');
-                if ($out === false) {
-                    respondJson(['success' => false, 'error' => 'No se pudo crear archivo temporal de ensamblado'], 500);
+                
+                // Verificar espacio en disco disponible
+                $diskFree = @disk_free_space($uploadDir);
+                $totalChunksSize = 0;
+                foreach ($chunkFiles as $chunkPath) {
+                    $totalChunksSize += @filesize($chunkPath);
+                }
+                
+                if ($diskFree !== false && $diskFree < ($totalChunksSize * 2)) {
+                    logMessage("ADVERTENCIA: Espacio en disco bajo. Libre: " . ($diskFree / 1024 / 1024) . "MB, Requerido: " . (($totalChunksSize * 2) / 1024 / 1024) . "MB");
+                    respondJson([
+                        'success'      => true,
+                        'message'      => 'Fragmento recibido (ensamblado pospuesto por espacio en disco)',
+                        'chunk_index'  => $chunkIndex,
+                        'chunk_count'  => $chunkCount,
+                        'warning'      => 'Espacio en disco bajo - ensamblado será completado en el próximo ciclo',
+                    ]);
+                    break;
                 }
 
-                foreach ($chunkFiles as $filePath) {
-                    $in = fopen($filePath, 'rb');
-                    if ($in === false) {
-                        fclose($out);
-                        @unlink($tempDest);
-                        respondJson(['success' => false, 'error' => 'No se pudo leer fragmento', 'chunk' => basename($filePath)], 500);
-                    }
-                    stream_copy_to_stream($in, $out);
-                    fclose($in);
+                $out = @fopen($tempDest, 'wb');
+                if ($out === false) {
+                    logMessage("ERROR: No se pudo crear archivo temporal de ensamblado: $tempDest", 'error');
+                    respondJson(['success' => false, 'error' => 'No se pudo crear archivo temporal (permisos o espacio insuficiente)'], 500);
                 }
-                fclose($out);
+
+                $assemblyFailed = false;
+                foreach ($chunkFiles as $filePath) {
+                    $in = @fopen($filePath, 'rb');
+                    if ($in === false) {
+                        @fclose($out);
+                        @unlink($tempDest);
+                        logMessage("ERROR: No se pudo leer fragmento: " . basename($filePath), 'error');
+                        respondJson(['success' => false, 'error' => 'No se pudo leer fragmento: ' . basename($filePath)], 500);
+                    }
+                    $copied = @stream_copy_to_stream($in, $out);
+                    @fclose($in);
+                    if ($copied === false) {
+                        $assemblyFailed = true;
+                        break;
+                    }
+                }
+                @fclose($out);
+
+                if ($assemblyFailed) {
+                    @unlink($tempDest);
+                    logMessage("ERROR: Fallo al copiar fragmentos durante ensamblado", 'error');
+                    respondJson(['success' => false, 'error' => 'Error al copiar fragmentos durante ensamblado'], 500);
+                }
 
                 if (file_exists($dest)) {
                     @unlink($dest);
                 }
-                if (!rename($tempDest, $dest)) {
+                if (!@rename($tempDest, $dest)) {
                     @unlink($tempDest);
-                    respondJson(['success' => false, 'error' => 'No se pudo mover el archivo ensamblado al destino'], 500);
+                    logMessage("ERROR: No se pudo renombrar archivo ensamblado de $tempDest a $dest", 'error');
+                    respondJson(['success' => false, 'error' => 'No se pudo finalizar el archivo ensamblado'], 500);
                 }
 
-                foreach (glob($chunkDir . '/*') ?: [] as $oldChunk) {
-                    @unlink($oldChunk);
-                }
+                // Limpiar chunks
+                @array_map('unlink', glob($chunkDir . DIRECTORY_SEPARATOR . 'chunk_*') ?: []);
                 @rmdir($chunkDir);
 
-                logMessage("CSV ensamblado en staging: $origName");
+                logMessage("CSV ensamblado en staging: $origName (" . (filesize($dest) / 1024) . " KB)");
 
                 respondJson([
                     'success'      => true,
-                    'message'      => 'CSV ensamblado en staging',
+                    'message'      => 'CSV ensamblado en staging, procesando...',
                     'staging_file' => $origName,
                     'upload_path'  => $dest,
                     'chunk'        => $chunkIndex + 1,

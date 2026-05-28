@@ -23,6 +23,7 @@ param(
     [string]$FilePath,
 
     [string]$Endpoint = 'http://localhost/Lensware_monitor-main/api.php?action=upload_csv_chunk',
+    [string]$ProcessEndpoint = 'http://localhost/Lensware_monitor-main/api.php?action=process_staging_csv',
     [string]$Secret = '',
     [string]$UploadId = '',
     [int]$ChunkSize = 200000
@@ -65,12 +66,12 @@ try {
         try {
             $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $buffer
         } catch {
-            Write-Error "Error al enviar el fragmento $chunkIndex: $_"
+            Write-Error "Error al enviar el fragmento $chunkIndex`: $_"
             exit 1
         }
 
         if (-not $response.success) {
-            Write-Error "El servidor respondió con error en fragmento $chunkIndex: $($response.error)"
+            Write-Error "El servidor respondio con error en fragmento $chunkIndex`: $($response.error)"
             exit 1
         }
 
@@ -80,6 +81,32 @@ try {
     Write-Host "Upload complete: $filename"
     if ($response.success) {
         Write-Host "Server message: $($response.message)"
+    }
+
+    # Procesar el archivo en el servidor despues de la carga
+    Write-Host "Processing CSV file on server..."
+    $processUri = "$ProcessEndpoint&file=$([uri]::EscapeDataString($filename))"
+    if ($Secret -ne '') {
+        $processUri += "&secret=$([uri]::EscapeDataString($Secret))"
+    }
+
+    $processHeaders = @{ 'Content-Type' = 'application/json' }
+    if ($Secret -ne '') {
+        $processHeaders['X-Upload-Secret'] = $Secret
+    }
+
+    try {
+        $processResponse = Invoke-RestMethod -Uri $processUri -Method Post -Headers $processHeaders -ErrorAction Stop
+        if ($processResponse.success) {
+            Write-Host "✓ Processing complete: $($processResponse.message)"
+            Write-Host "Records processed: $(if($processResponse.data.records) { $processResponse.data.records } else { 'N/A' })"
+        } else {
+            Write-Error "Processing failed: $($processResponse.error)"
+            exit 1
+        }
+    } catch {
+        Write-Error "Error processing file on server: $_"
+        exit 1
     }
 } finally {
     $stream.Close()
