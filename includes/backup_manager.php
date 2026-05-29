@@ -377,12 +377,13 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
 
     $result['success'] = $result['dates'] !== [];
     
-    // Limpiar respaldos antiguos si se crearon nuevos respaldos exitosamente
+    // Liberar espacio: borrar intermedios del día y CSV anteriores de staging
     if ($result['success']) {
-        $cleanup = cleanupOldBackups();
-        $result['cleanup'] = $cleanup;
+        $result['cleanup_intraday'] = purgeIntradayBackups();
+        $result['cleanup_staging']  = purgeStagingFolder();
+        $result['cleanup_old']      = cleanupOldBackups();
     }
-    
+
     return $result;
 }
 
@@ -395,6 +396,96 @@ function syncProductionDateBackupsFromCsv(string $sourcePath): array
  * Mantiene un respaldo por día para histórico, borrando archivos obsoletos.
  * Se ejecuta automáticamente después de crear nuevos respaldos.
  */
+/**
+ * purgeStagingFolder — mantiene UN solo CSV en staging (el más reciente).
+ * Se llama cada vez que llega un nuevo archivo para liberar espacio.
+ */
+function purgeStagingFolder(): array
+{
+    if (!defined('STAGING_FOLDER') || !is_dir(STAGING_FOLDER)) {
+        return ['deleted' => 0, 'freed_bytes' => 0];
+    }
+    $dir = STAGING_FOLDER;
+    $allCsvs = [];
+    foreach (CSV_PREFIXES as $prefix) {
+        foreach (glob($dir . DIRECTORY_SEPARATOR . $prefix . '*.csv') ?: [] as $f) {
+            $allCsvs[] = ['path' => $f, 'mtime' => @filemtime($f) ?: 0, 'size' => @filesize($f) ?: 0];
+        }
+        foreach (glob($dir . DIRECTORY_SEPARATOR . $prefix . '*.CSV') ?: [] as $f) {
+            $allCsvs[] = ['path' => $f, 'mtime' => @filemtime($f) ?: 0, 'size' => @filesize($f) ?: 0];
+        }
+    }
+    if (count($allCsvs) <= 1) return ['deleted' => 0, 'freed_bytes' => 0];
+
+    // Ordenar desc por mtime → el primero es el más reciente (se queda)
+    usort($allCsvs, fn($a, $b) => $b['mtime'] <=> $a['mtime']);
+    $keep  = array_shift($allCsvs);  // conservar el más reciente
+    $freed = 0; $del = 0;
+    foreach ($allCsvs as $f) {
+        if (@unlink($f['path'])) {
+            $freed += $f['size'];
+            $del++;
+            if (function_exists('logMessage')) logMessage("purgeStaging: borrado " . basename($f['path']));
+        }
+    }
+    return ['deleted' => $del, 'freed_bytes' => $freed, 'kept' => basename($keep['path'])];
+}
+
+/**
+ * purgeIntradayBackups — para cada día mantiene solo el backup más reciente
+ * (o el marcado como _2359_ si ya existe). Borra los intermedios del mismo día.
+ * Se llama después de crear un nuevo backup para no acumular versiones del día.
+ */
+function purgeIntradayBackups(): array
+{
+    if (!defined('BACKUP_FOLDER') || !is_dir(BACKUP_FOLDER)) {
+        return ['deleted' => 0, 'freed_bytes' => 0];
+    }
+    $dir = BACKUP_FOLDER;
+    $byDay = [];
+    foreach (glob($dir . DIRECTORY_SEPARATOR . 'BACKUP_*.csv') ?: [] as $f) {
+        $name = basename($f);
+        if (preg_match('/^BACKUP_(\d{8})_/', $name, $m)) {
+            $day = $m[1];
+            $byDay[$day][] = ['path' => $f, 'name' => $name,
+                              'mtime' => @filemtime($f) ?: 0,
+                              'size'  => @filesize($f) ?: 0,
+                              'is_final' => str_contains($name, '_2359_')];
+        }
+    }
+
+    $freed = 0; $del = 0;
+    foreach ($byDay as $day => $files) {
+        if (count($files) <= 1) continue;
+
+        // Si hay un _2359_ ese es el oficial; si no, el más reciente por mtime
+        $official = null;
+        foreach ($files as $fi) {
+            if ($fi['is_final']) { $official = $fi; break; }
+        }
+        if ($official === null) {
+            usort($files, fn($a, $b) => $b['mtime'] <=> $a['mtime']);
+            $official = $files[0];
+        }
+
+        foreach ($files as $fi) {
+            if ($fi['path'] === $official['path']) continue;
+            if (@unlink($fi['path'])) {
+                $freed += $fi['size'];
+                $del++;
+                // Actualizar índice
+                $index = loadBackupIndex();
+                unset($index['files'][$fi['name']]);
+                saveBackupIndex($index);
+                if (function_exists('logMessage')) logMessage("purgeIntraday: borrado {$fi['name']} (día $day, conservado " . basename($official['path']) . ")");
+            }
+        }
+    }
+    if ($del > 0) rebuildBackupIndex();
+    return ['deleted' => $del, 'freed_bytes' => $freed,
+            'freed_mb' => round($freed / 1024 / 1024, 2)];
+}
+
 function cleanupOldBackups(): array
 {
     if (!defined('BACKUP_FOLDER') || !defined('BACKUP_RETENTION_DAYS')) {
