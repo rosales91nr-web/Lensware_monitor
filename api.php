@@ -726,6 +726,14 @@ break;
                     logMessage("ADVERTENCIA: auto-proceso tras chunk fallido: " . $pEx->getMessage(), 'warning');
                 }
 
+                // ── Limpiar staging: conservar solo el CSV recién subido ──
+                if (function_exists('purgeStagingFolder')) {
+                    $purge = purgeStagingFolder();
+                    if (($purge['deleted'] ?? 0) > 0) {
+                        logMessage("purgeStagingFolder: {$purge['deleted']} archivo(s) anteriores eliminados, conservado {$purge['kept']}");
+                    }
+                }
+
                 respondJson([
                     'success'        => true,
                     'message'        => 'CSV ensamblado y procesado',
