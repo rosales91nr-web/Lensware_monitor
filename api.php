@@ -84,42 +84,59 @@ try {
 
         case 'status':
             $latestCSV = null;
-            $cache = null;
-            
-            try {
-                $latestCSV = findLatestDataSource();
-            } catch (Throwable $e) {
-                // Silencioso: no hay CSV
-            }
-            
-            try {
-                $cache = readCache();
-            } catch (Throwable $e) {
-                // Silencioso: no hay caché
+            $cache     = null;
+            $syncMeta  = [];
+
+            try { $latestCSV = findLatestDataSource(); } catch (Throwable $e) {}
+            try { $cache     = readCache();             } catch (Throwable $e) {}
+            try { $syncMeta  = readSyncMeta();          } catch (Throwable $e) {}
+
+            // Disco: tamaño de carpetas de datos
+            $dataBase = defined('APP_BASE') ? APP_BASE : dirname(CACHE_FILE);
+            $diskInfo = [];
+            foreach (['staging' => STAGING_FOLDER, 'backups' => BACKUP_FOLDER, 'cache' => dirname(CACHE_FILE), 'logs' => dirname(LOG_FILE)] as $key => $dir) {
+                $size = 0;
+                if (is_dir($dir)) {
+                    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $f) {
+                        $size += $f->getSize();
+                    }
+                }
+                $diskInfo[$key] = ['path' => $dir, 'bytes' => $size, 'kb' => round($size / 1024, 1)];
             }
 
-            $reportsAccessible = is_dir(WATCH_FOLDER) && is_readable(WATCH_FOLDER);
-            
+            // Últimas líneas del log (solo errores/warnings para el panel)
+            $allLines   = readLastLogLines(60);
+            $errorLines = array_values(array_filter($allLines, fn($l) => stripos($l, '[error]') !== false || stripos($l, '[warning]') !== false));
+            $recentLogs = array_slice(array_reverse($allLines), 0, 10);
+
+            // Backup count
+            $backupCount = 0;
+            if (is_dir(BACKUP_FOLDER)) {
+                $backupCount = count(glob(BACKUP_FOLDER . '/BACKUP_*.csv') ?: []);
+            }
+
             respondJson([
                 'success' => true,
                 'data'    => [
-                    'monitor_active'      => ($latestCSV !== null),
-                    'reports_accessible'  => $reportsAccessible,
-                    'watch_folder'        => WATCH_FOLDER,
-                    'staging_folder'      => STAGING_FOLDER,
-                    'backup_folder'       => BACKUP_FOLDER,
-                    'latest_file'         => $latestCSV ? basename($latestCSV) : null,
-                    'latest_modified'     => $latestCSV ? date('Y-m-d H:i:s', @filemtime($latestCSV) ?: time()) : null,
-                    'cache_records'       => $cache ? count($cache['records'] ?? []) : 0,
-                    'cache_age_seconds'   => 0,
-                    'environment'         => APP_ENV,
+                    'environment'       => APP_ENV,
+                    'has_data'          => ($latestCSV !== null),
+                    'latest_file'       => $latestCSV ? basename($latestCSV) : null,
+                    'cache_records'     => $cache ? count($cache['records'] ?? []) : 0,
+                    'backup_count'      => $backupCount,
+                    'sync_meta'         => $syncMeta,
+                    'disk'              => $diskInfo,
+                    'recent_logs'       => $recentLogs,
+                    'error_count'       => count($errorLines),
+                    'recent_errors'     => array_slice(array_reverse($errorLines), 0, 5),
+                    'php_version'       => PHP_VERSION,
+                    'server_time'       => date('Y-m-d H:i:s'),
                 ],
             ]);
             break;
 
         case 'sync':
             try {
-                $result = syncLiveData(true);
+                $result = syncLiveData(true, 'manual_sync');
                 if (!$result['success']) {
                     respondJson(['success' => false, 'error' => $result['error']], 200);
                 }
@@ -552,7 +569,7 @@ try {
             // Auto-procesar inmediatamente: actualiza caché y crea respaldo
             $autoResult = null;
             try {
-                $autoResult = syncLiveData(true);
+                $autoResult = syncLiveData(true, 'web_upload');
                 if ($autoResult['success'] ?? false) {
                     rebuildBackupIndex();
                     logMessage("CSV auto-procesado tras upload directo: $origName");
@@ -733,7 +750,7 @@ break;
                 // ── Auto-procesar: actualiza caché en vivo + crea respaldo ──
                 $processResult = null;
                 try {
-                    $processResult = syncLiveData(true);
+                    $processResult = syncLiveData(true, 'web_upload');
                     if ($processResult['success'] ?? false) {
                         rebuildBackupIndex();
                         logMessage("CSV auto-procesado (syncLiveData) tras ensamblado: $origName");

@@ -210,7 +210,8 @@ function switchTab(tabId) {
         operators: 'Operadores',
         search: 'Buscar',
         historico: 'Histórico de Backups',
-        upload: 'Importar CSV'
+        upload: 'Importar CSV',
+        sistema: 'Estado del Sistema'
     };
     document.getElementById('page-title').textContent = titles[tabId] || 'Dashboard';
 
@@ -226,6 +227,7 @@ function switchTab(tabId) {
     if (tabId === 'activity') renderActivity();
     if (tabId === 'historico' && histState.backupsByDate.length === 0) loadHistBackupDays();
     if (tabId === 'search' && searchState.query) renderSearchResults();
+    if (tabId === 'sistema') loadSystemStatus();
 }
 
 function refreshDashboardCharts() {
@@ -2026,3 +2028,128 @@ const STATUS_COLORS = {
     'TRAC':'#F97316','PREP':'#3B82F6','PRNT':'#14B8A6',
     'PKRX':'#EC4899','WHRX':'#64748B','WHST':'#94A3B8'
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Panel de Estado del Sistema
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadSystemStatus() {
+    const loading = document.getElementById('sys-loading');
+    const panel   = document.getElementById('sys-panel');
+    if (!loading || !panel) return;
+
+    loading.style.display = 'block';
+    panel.style.display   = 'none';
+
+    let d;
+    try {
+        const r = await fetch('api.php?action=status');
+        const json = await r.json();
+        d = json.data;
+    } catch (e) {
+        loading.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ef4444"></i> Error al cargar el estado del sistema.';
+        return;
+    }
+
+    // ── Cards principales ──
+    const meta   = d.sync_meta || {};
+    const hasData = d.has_data;
+    const lastSync = meta.last_sync || null;
+    const ago = lastSync ? timeSince(new Date(lastSync).getTime()) : 'Nunca';
+
+    const sourceIcon = {
+        'web_upload':  'fa-globe',
+        'monitor':     'fa-robot',
+        'manual_sync': 'fa-hand-pointer',
+        'auto_sync':   'fa-sync-alt',
+        'script':      'fa-terminal',
+    };
+    const srcIcon = sourceIcon[meta.source] || 'fa-question';
+
+    const cards = [
+        {
+            title: 'Estado general',
+            colorClass: hasData ? 'ok' : 'warn',
+            value: `<span class="sys-badge ${hasData ? 'green' : 'red'}"><i class="fas fa-circle" style="font-size:7px"></i> ${hasData ? 'Operativo' : 'Sin datos'}</span>`,
+            sub: `PHP ${d.php_version} · ${d.environment}`
+        },
+        {
+            title: 'Última sincronización',
+            colorClass: lastSync ? 'ok' : 'warn',
+            value: lastSync ? lastSync.slice(11, 19) : '—',
+            sub: lastSync ? `${lastSync.slice(0,10)} · hace ${ago}` : 'Sube un CSV para comenzar'
+        },
+        {
+            title: 'Origen de datos',
+            colorClass: '',
+            value: `<i class="fas ${srcIcon}" style="font-size:18px;color:#3b82f6"></i>`,
+            sub: meta.source_label || 'Sin datos aún'
+        },
+        {
+            title: 'Registros en caché',
+            colorClass: d.cache_records > 0 ? 'ok' : 'warn',
+            value: d.cache_records.toLocaleString(),
+            sub: `${d.backup_count} respaldo(s) histórico(s)`
+        },
+        {
+            title: 'Sincronizaciones hoy',
+            colorClass: '',
+            value: (meta.sync_count_today || 0).toString(),
+            sub: `Archivo: ${meta.file || '—'}`
+        },
+        {
+            title: 'Monitor automático',
+            colorClass: 'ok',
+            value: '<span class="sys-badge green"><i class="fas fa-circle" style="font-size:7px"></i> Activo</span>',
+            sub: 'Corre cada 60 s en background'
+        },
+    ];
+
+    const cardsEl = document.getElementById('sys-cards');
+    cardsEl.innerHTML = cards.map(c => `
+        <div class="sys-card ${c.colorClass}">
+            <div class="sys-card-title">${c.title}</div>
+            <div class="sys-card-value">${c.value}</div>
+            <div class="sys-card-sub">${c.sub}</div>
+        </div>`).join('');
+
+    // ── Log ──
+    const logBox = document.getElementById('sys-log-box');
+    if (d.recent_logs && d.recent_logs.length) {
+        logBox.innerHTML = d.recent_logs.map(line => {
+            const isErr  = /\[error\]/i.test(line);
+            const isWarn = /\[warning\]/i.test(line);
+            const cls    = isErr ? 'log-err' : isWarn ? 'log-warn' : '';
+            return `<div class="${cls}">${escapeHtml(line)}</div>`;
+        }).join('');
+        logBox.scrollTop = logBox.scrollHeight;
+    } else {
+        logBox.innerHTML = '<span style="color:#475569">Sin entradas de log todavía.</span>';
+    }
+
+    // ── Disco ──
+    const diskEl = document.getElementById('sys-disk');
+    const diskLabels = { staging: 'Staging (CSVs)', backups: 'Respaldos', cache: 'Caché', logs: 'Logs' };
+    const diskColors = { staging: '#3b82f6', backups: '#8b5cf6', cache: '#10b981', logs: '#f59e0b' };
+    const totalKb = Object.values(d.disk || {}).reduce((s, v) => s + (v.kb || 0), 0) || 1;
+
+    diskEl.innerHTML = Object.entries(d.disk || {}).map(([key, info]) => {
+        const pct = Math.min(100, Math.round((info.kb / totalKb) * 100));
+        return `
+        <div class="sys-card" style="border-left-color:${diskColors[key] || '#3b82f6'}">
+            <div class="sys-card-title">${diskLabels[key] || key}</div>
+            <div class="sys-card-value" style="font-size:17px">${info.kb >= 1024 ? (info.kb/1024).toFixed(1)+' MB' : info.kb+' KB'}</div>
+            <div class="sys-disk-bar"><div class="sys-disk-bar-fill" style="width:${pct}%;background:${diskColors[key]}"></div></div>
+        </div>`;
+    }).join('');
+
+    loading.style.display = 'none';
+    panel.style.display   = 'block';
+}
+
+function timeSince(tsMs) {
+    const s = Math.floor((Date.now() - tsMs) / 1000);
+    if (s < 60)   return `${s}s`;
+    if (s < 3600) return `${Math.floor(s/60)}min`;
+    if (s < 86400) return `${Math.floor(s/3600)}h`;
+    return `${Math.floor(s/86400)}d`;
+}

@@ -1561,28 +1561,85 @@ function buildHistLivePayload(string $dateFilter, string $hourFrom = '', string 
 /**
  * Fuerza la sincronización de datos en vivo
  */
-function syncLiveData(bool $forceRefresh = false): array {
+function syncLiveData(bool $forceRefresh = false, string $source = 'monitor'): array {
     $latest = findLatestDataSource();
     if (!$latest) {
         return ['success' => false, 'error' => 'No se encontraron archivos CSV para sincronizar'];
     }
-    
+
     $payload = buildLiveDataPayload($latest);
     if (!$payload || empty($payload['records'])) {
         return ['success' => false, 'error' => 'No se pudieron procesar los datos del archivo'];
     }
-    
+
     saveCache($payload);
-    
+
     $backupSync = ensureCSVBackups($latest);
-    
+
+    $records = count($payload['records']);
+    saveSyncMeta($source, basename($latest), $records);
+
     return [
-        'success' => true,
-        'records' => count($payload['records']),
+        'success'     => true,
+        'records'     => $records,
         'source_file' => basename($latest),
         'data_source' => isBackupFile($latest) ? 'backup' : 'upload',
         'backup_sync' => $backupSync,
     ];
+}
+
+function syncMetaFile(): string {
+    return dirname(CACHE_FILE) . '/sync_meta.json';
+}
+
+function saveSyncMeta(string $source, string $file, int $records): void {
+    $metaFile = syncMetaFile();
+    $existing = readSyncMeta();
+    $today    = date('Y-m-d');
+
+    $sourceLabels = [
+        'web_upload'  => 'Subida web',
+        'monitor'     => 'Monitor automático',
+        'manual_sync' => 'Sincronización manual',
+        'auto_sync'   => 'Auto-sync',
+        'script'      => 'Script externo (PowerShell)',
+    ];
+
+    $count = ($existing['sync_count_today'] ?? 0);
+    if (($existing['sync_date'] ?? '') === $today) {
+        $count++;
+    } else {
+        $count = 1;
+    }
+
+    $meta = [
+        'last_sync'        => date('Y-m-d H:i:s'),
+        'last_sync_ts'     => time(),
+        'source'           => $source,
+        'source_label'     => $sourceLabels[$source] ?? $source,
+        'file'             => $file,
+        'records'          => $records,
+        'sync_date'        => $today,
+        'sync_count_today' => $count,
+        'server_started'   => $existing['server_started'] ?? date('Y-m-d H:i:s'),
+    ];
+
+    @file_put_contents($metaFile, json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+}
+
+function readSyncMeta(): array {
+    $metaFile = syncMetaFile();
+    if (!file_exists($metaFile)) return [];
+    $json = @file_get_contents($metaFile);
+    if (!$json) return [];
+    return json_decode($json, true) ?: [];
+}
+
+function readLastLogLines(int $n = 30): array {
+    if (!defined('LOG_FILE') || !file_exists(LOG_FILE)) return [];
+    $lines = @file(LOG_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!$lines) return [];
+    return array_slice($lines, -$n);
 }
 
 function logMessage(string $message, string $level = 'info'): void {

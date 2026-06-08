@@ -1363,6 +1363,98 @@ function togglePwd() {
             align-items: center;
             justify-content: center;
         }
+
+        /* ========== SISTEMA / STATUS PANEL ========== */
+        .sys-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .sys-card {
+            background: white;
+            border-radius: 14px;
+            padding: 20px 22px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.07);
+            border-left: 4px solid #3b82f6;
+        }
+        .sys-card.ok   { border-left-color: #10b981; }
+        .sys-card.warn { border-left-color: #f59e0b; }
+        .sys-card.err  { border-left-color: #ef4444; }
+        .sys-card-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            color: #64748b;
+            margin-bottom: 8px;
+        }
+        .sys-card-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+        .sys-card-sub {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+        .sys-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .sys-badge.green { background: #d1fae5; color: #065f46; }
+        .sys-badge.red   { background: #fee2e2; color: #991b1b; }
+        .sys-badge.blue  { background: #dbeafe; color: #1d4ed8; }
+        .sys-badge.gray  { background: #f1f5f9; color: #475569; }
+        .sys-log-box {
+            background: #0f172a;
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #94a3b8;
+            max-height: 220px;
+            overflow-y: auto;
+            line-height: 1.6;
+        }
+        .sys-log-box .log-err  { color: #f87171; }
+        .sys-log-box .log-warn { color: #fbbf24; }
+        .sys-log-box .log-ok   { color: #34d399; }
+        .sys-section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 20px 0 10px;
+        }
+        .sys-disk-bar {
+            background: #f1f5f9;
+            border-radius: 6px;
+            height: 6px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .sys-disk-bar-fill { height: 100%; border-radius: 6px; background: #3b82f6; }
+        .sys-refresh-btn {
+            padding: 8px 18px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .sys-refresh-btn:hover { background: #2563eb; }
+        #tab-sistema { padding: 0; }
+        #sys-loading { text-align: center; padding: 60px; color: #94a3b8; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -1387,6 +1479,8 @@ function togglePwd() {
             <div class="nav-section-label" style="margin-top:8px;">Análisis</div>
             <a href="#" class="nav-item" data-tab="historico" title="Histórico"><i class="fas fa-calendar-alt"></i><span class="nav-label">Histórico</span></a>
             <a href="#" class="nav-item" data-tab="upload" title="Importar CSV"><i class="fas fa-upload"></i><span class="nav-label">Importar CSV</span></a>
+            <div class="nav-section-label" style="margin-top:8px;">Admin</div>
+            <a href="#" class="nav-item" data-tab="sistema" title="Estado del Sistema"><i class="fas fa-server"></i><span class="nav-label">Sistema</span></a>
         </nav>
         <div class="sidebar-footer">
             <div class="monitor-status" id="monitor-status">
@@ -1704,6 +1798,27 @@ function togglePwd() {
                     <strong>Carpeta automática (producción):</strong><br>
                     <code>\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS</code><br>
                     Lensware escribe ahí los CSV; el monitor local los detecta cada pocos segundos.
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Sistema -->
+        <div class="tab-content" id="tab-sistema">
+            <div id="sys-loading"><i class="fas fa-spinner fa-spin"></i> Cargando estado del sistema...</div>
+            <div id="sys-panel" style="display:none;padding:4px 0 20px;">
+                <!-- Fila de cards principales -->
+                <div class="sys-grid" id="sys-cards"></div>
+
+                <!-- Log reciente -->
+                <div class="sys-section-title"><i class="fas fa-terminal" style="margin-right:6px;color:#3b82f6;"></i>Log reciente</div>
+                <div class="sys-log-box" id="sys-log-box">—</div>
+
+                <!-- Almacenamiento -->
+                <div class="sys-section-title"><i class="fas fa-hdd" style="margin-right:6px;color:#8b5cf6;"></i>Almacenamiento</div>
+                <div id="sys-disk" class="sys-grid"></div>
+
+                <div style="margin-top:16px;">
+                    <button class="sys-refresh-btn" onclick="loadSystemStatus()"><i class="fas fa-sync-alt"></i> Actualizar</button>
                 </div>
             </div>
         </div>

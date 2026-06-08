@@ -19,7 +19,7 @@ if ($daily !== []) {
     echo "Respaldos diarios: " . implode(', ', $daily) . "\n";
 }
 
-$result = syncLiveData(false);
+$result = syncLiveData(false, 'monitor');
 
 if (!empty($result['backup_sync']['dates'])) {
     echo "Respaldos por fecha: " . implode(', ', $result['backup_sync']['dates']) . "\n";

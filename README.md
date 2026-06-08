@@ -1,152 +1,94 @@
-# Lensware Pro — XAMPP local
+# Lensware Pro — Monitor de Producción
 
-Dashboard de monitoreo de producción Lensware. Lee los CSV directamente desde la carpeta de red donde Lensware los genera.
+Dashboard web en tiempo real para monitorear la producción de lentes en Lensware. Procesa archivos CSV exportados por el sistema y muestra KPIs, gráficos por estado/hora/dispositivo/operador y gestión de respaldos históricos.
 
-## Carpeta de datos (REPORTS)
+**Plataforma principal: [Replit](https://replit.com)**
 
-```
-\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS
-```
+## Inicio rápido en Replit
 
-Archivos esperados (prefijos):
+El proyecto está listo para correr sin configuración adicional:
 
-- `UNI_PROD_ALL_ACT_*.csv`
-- `UNI_PROD_SIMPLE_ACT_*.csv`
+1. Abrí el Repl
+2. El workflow "Start application" arranca automáticamente
+3. Accedé al dashboard en el Preview — clave: `JimLab*Lensware#_`
 
-## Requisitos
+## Cómo subir datos
 
-- Windows con acceso a la ruta UNC anterior
-- [XAMPP](https://www.apachefriends.org/) (PHP 8.x, Apache)
-- Extensión PHP `mbstring` activada
+### Opción A — Subida manual (web)
 
-## Instalación rápida
+1. Iniciá sesión en el dashboard
+2. Pestaña **Importar CSV**
+3. Arrastrá o seleccioná el archivo CSV de Lensware (`UNI_PROD_ALL_ACT_*` o `UNI_PROD_SIMPLE_ACT_*`)
+4. El dashboard se actualiza automáticamente al procesar
 
-1. Copia el proyecto en `C:\xampp\htdocs\Lensware-pro`
-2. Renombra o verifica que exista `.htaccess` (ya incluido)
-3. Edita `.env` si la ruta REPORTS cambia en tu red
-4. Inicia **Apache** en el panel XAMPP
-5. Abre: **http://localhost/Lensware-pro/**
+### Opción B — Script automático desde Windows (PowerShell)
 
-## Permisos importantes
-
-Apache (usuario del servicio) debe poder **leer** la carpeta UNC REPORTS.
-
-Opciones:
-
-- Ejecutar Apache con una cuenta de Windows que tenga acceso al share
-- O mapear la unidad de red (ej. `Z:\`) y poner en `.env`:
-  ```
-  WATCH_FOLDER=Z:\REPORTS
-  ```
-
-Las carpetas locales `cache/`, `backups/`, `uploads/`, `logs/` deben ser **escribibles** por Apache.
-
-## Sincronización automática
-
-### Opción A — Tarea programada (recomendada)
-
-Ejecuta como administrador:
-
-```
-instalar_tarea_sync.bat
-```
-
-Esto crea la tarea **LenswarePro_Sync** que corre `sync_local.ps1` cada 2 minutos.
-
-### Opción B — Monitor continuo
-
-En PowerShell:
+Usá `push_to_replit.ps1` para subir el CSV más reciente desde la carpeta de Lensware:
 
 ```powershell
-cd C:\xampp\htdocs\Lensware-pro
-.\monitor_local.ps1
+# Editar estas variables en el script:
+$REPLIT_URL    = "https://TU-APP.replit.app/api.php"
+$UPLOAD_SECRET = "tu_token_secreto"
+$REPORTS_FOLDER = "\\172.16.8.32\Lensware\LensSOAPServer_INT\www\REPORTS"
+
+# Correr manualmente:
+.\push_to_replit.ps1
+
+# O programar con el Programador de tareas de Windows (cada 2 min):
+# Acción: powershell.exe -ExecutionPolicy Bypass -File "C:\ruta\push_to_replit.ps1"
 ```
 
-### Opción C — Manual
+## Variables de entorno
 
-```bat
-C:\xampp\php\php.exe C:\xampp\htdocs\Lensware-pro\monitor.php
+Configuradas en Replit Secrets (no en código):
+
+| Variable        | Descripción                                              |
+|-----------------|----------------------------------------------------------|
+| `UPLOAD_SECRET` | Token para autenticar subidas externas desde PowerShell  |
+
+Variables de workflow (ya configuradas, no editar):
+
+| Variable   | Valor                              |
+|------------|------------------------------------|
+| `APP_ENV`  | `railway`                          |
+| `TMP_BASE` | `/home/runner/workspace/data`      |
+
+## Estructura del proyecto
+
+```
+/
+├── index.php              # SPA: login + dashboard completo
+├── api.php                # REST API interna
+├── config.php             # Configuración multi-entorno
+├── router.php             # Seguridad para php -S (bloquea dirs sensibles)
+├── monitor.php            # Sincronización periódica (corre en background)
+├── cleanup.php            # Limpieza de backups (1 por día)
+├── process_daily_backups.php # CLI para procesar backups
+├── push_to_replit.ps1     # Script Windows → sube CSV automáticamente
+├── includes/
+│   ├── functions.php      # Lógica de datos, CSV, backups, sync
+│   └── backup_manager.php # Gestión de respaldos históricos
+├── js/app.js              # Frontend (charts, tabs, API calls)
+└── data/                  # Almacenamiento persistente (gitignored)
+    ├── staging/           # CSVs recibidos
+    ├── backups/           # Respaldos históricos diarios
+    ├── cache/             # Cache JSON procesado + metadatos de sync
+    └── logs/              # Logs de la aplicación
 ```
 
-El dashboard también actualiza solo al abrir la página y cada 30 segundos.
+## API
 
-## Estructura local
+| Acción               | Método | Descripción                                      |
+|----------------------|--------|--------------------------------------------------|
+| `?action=data`       | GET    | Datos en vivo del dashboard                      |
+| `?action=status`     | GET    | Estado del sistema, última sync, disco, logs     |
+| `?action=sync`       | POST   | Forzar sincronización                            |
+| `?action=upload_csv` | POST   | Subir CSV (requiere `X-Upload-Secret` header)    |
+| `?action=backups`    | GET    | Listado de respaldos históricos                  |
 
-| Carpeta | Uso |
-|---------|-----|
-| `\\172.16.8.32\...\REPORTS` | CSV en vivo (solo lectura) |
-| `uploads/` | Importaciones manuales desde el navegador |
-| `backups/` | Copias automáticas `BACKUP_*.csv` |
-| `cache/` | Caché JSON del dashboard |
-| `logs/` | Registro de la aplicación |
+## Despliegue
 
-## Despliegue en Railway desde GitHub
-
-Esta aplicación puede desplegarse en Railway usando el `Dockerfile` y el archivo `railway.toml` incluido.
-
-1. Crea un repositorio en GitHub y sube este proyecto.
-2. En Railway, crea un nuevo proyecto y conéctalo al repositorio de GitHub.
-3. Configura el despliegue para usar el `Dockerfile` existente.
-4. Ajusta las variables de entorno en Railway según sea necesario.
-
-Variables recomendadas:
-
-```env
-REPORTS_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
-WATCH_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
-STAGING_FOLDER=/var/www/html/uploads
-BACKUP_FOLDER=/var/www/html/backups
-CACHE_TTL=30
-BACKUP_RANGE_MAX_DAYS=93
-UPLOAD_SECRET=tu_clave_secreta
-APP_ENV=production
-```
-
-> Railway puede montar un volumen persistente en `/var/www/html/backups`. Si lo haces, la app guardará los backups ahí y los preservará entre despliegues.
-
-> Nota: Railway ejecuta la aplicación en la nube dentro de un contenedor. Esto significa que una carpeta de red Windows (`\\host\\share`) no será accesible desde Railway a menos que esté disponible públicamente o mediante un montaje compatible.
-
-Opciones en Railway:
-
-- Si no puedes conectar el share remoto, usa la pestaña **Importar CSV** para subir archivos manualmente.
-- Los directorios `cache/`, `backups/`, `logs/` y `uploads/` son temporales en el contenedor; si necesitas persistencia real, usa un almacenamiento externo.
-
-También se incluye un flujo de despliegue automático en `.github/workflows/deploy-railway.yml`.
-
-## Configuración (.env)
-
-```env
-REPORTS_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
-WATCH_FOLDER=\\172.16.8.32\\Lensware\\LensSOAPServer_INT\\www\\REPORTS
-CACHE_TTL=30
-```
-
-## API local
-
-| Acción | URL |
-|--------|-----|
-| Datos en vivo | `api.php?action=data` |
-| Estado / REPORTS | `api.php?action=status` |
-| Forzar sync | `api.php?action=sync` |
-| Refrescar caché | `api.php?action=refresh` |
-
-## Solución de problemas
-
-**"REPORTS no accesible"**
-
-- Abre la ruta en el Explorador de Windows desde la misma PC donde corre XAMPP
-- Verifica credenciales del share
-- Prueba mapear unidad de red y actualizar `.env`
-
-**"No hay datos disponibles"**
-
-- Confirma que exista un CSV con prefijo válido en REPORTS
-- Ejecuta `php monitor.php` y revisa `logs/app.log`
-
-**Apache no lee UNC**
-
-- Usa `sync_local.ps1` en tarea programada con tu usuario de Windows (tiene acceso al share)
-- El script PHP corre con tu usuario y actualiza la caché local
+Para publicar en Replit, usá el botón **Publish** en la interfaz. El proyecto está configurado para `autoscale`.
 
 ---
 
