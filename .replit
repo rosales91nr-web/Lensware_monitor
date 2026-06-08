@@ -22,13 +22,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "APP_ENV=railway php -S 0.0.0.0:5000"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "APP_ENV=railway bash -c 'php monitor.php 2>&1; while true; do sleep 60 && php monitor.php 2>&1; done & php -S 0.0.0.0:5000'"
+waitForPort = 5000
 
 [[ports]]
 localPort = 5000

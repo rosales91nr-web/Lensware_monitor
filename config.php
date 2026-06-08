@@ -21,7 +21,7 @@ if (file_exists(__DIR__ . '/.env')) {
 if ($isRailway) {
     // Railway: usar rutas configurables para soportar volúmenes persistentes
     $tmpBase = getenv('TMP_BASE') ?: '/tmp/lensware';
-    $backupPath = getenv('BACKUP_FOLDER') ?: '/var/www/html/backups';
+    $backupPath = getenv('BACKUP_FOLDER') ?: $tmpBase . '/backups';
     $cachePath  = getenv('CACHE_FILE') ?: $tmpBase . '/cache/cache.json';
     $logPath    = getenv('LOG_FILE') ?: $tmpBase . '/logs/app.log';
 

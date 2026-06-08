@@ -549,11 +549,27 @@ try {
 
             logMessage("CSV subido en staging: $origName");
 
+            // Auto-procesar inmediatamente: actualiza caché y crea respaldo
+            $autoResult = null;
+            try {
+                $autoResult = syncLiveData(true);
+                if ($autoResult['success'] ?? false) {
+                    rebuildBackupIndex();
+                    logMessage("CSV auto-procesado tras upload directo: $origName");
+                }
+            } catch (Throwable $pEx) {
+                logMessage("ADVERTENCIA: auto-proceso tras upload fallido: " . $pEx->getMessage(), 'warning');
+            }
+
             respondJson([
-                'success'      => true,
-                'message'      => 'CSV cargado en staging',
-                'staging_file' => $origName,
-                'upload_path'  => $dest,
+                'success'        => true,
+                'message'        => ($autoResult['success'] ?? false)
+                    ? 'CSV importado y procesado correctamente'
+                    : 'CSV cargado en staging',
+                'staging_file'   => $origName,
+                'upload_path'    => $dest,
+                'auto_processed' => ($autoResult['success'] ?? false),
+                'records'        => $autoResult['records'] ?? null,
             ]);
 
 
@@ -714,13 +730,13 @@ break;
 
                 logMessage("CSV ensamblado en staging: $origName (" . (filesize($dest) / 1024) . " KB)");
 
-                // ── Auto-procesar el CSV ensamblado (evita depender del segundo fetch del cliente) ──
+                // ── Auto-procesar: actualiza caché en vivo + crea respaldo ──
                 $processResult = null;
                 try {
-                    $processResult = ensureCSVBackups($dest);
+                    $processResult = syncLiveData(true);
                     if ($processResult['success'] ?? false) {
                         rebuildBackupIndex();
-                        logMessage("CSV auto-procesado tras ensamblado: $origName");
+                        logMessage("CSV auto-procesado (syncLiveData) tras ensamblado: $origName");
                     }
                 } catch (Throwable $pEx) {
                     logMessage("ADVERTENCIA: auto-proceso tras chunk fallido: " . $pEx->getMessage(), 'warning');
